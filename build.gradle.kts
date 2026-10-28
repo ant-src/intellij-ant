@@ -53,9 +53,12 @@ intellijPlatform {
             val start = readme.indexOf("<!-- plugin description -->")
             val end = readme.indexOf("<!-- plugin description end -->")
             require(start >= 0 && end > start) { "README.md lacks the plugin description markers" }
+            // The README's Markdown, as the HTML the Marketplace shows: paragraphs, links, and code.
             readme.substring(start + "<!-- plugin description -->".length, end).trim()
                 .split("\n\n")
                 .joinToString("\n") { "<p>" + it.replace("\n", " ") + "</p>" }
+                .replace(Regex("""\[([^\]]+)]\(([^)]+)\)"""), "<a href=\"$2\">$1</a>")
+                .replace(Regex("`([^`]+)`"), "<code>$1</code>")
         }
         ideaVersion {
             sinceBuild = "253"
