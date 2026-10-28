@@ -15,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.LspServerListener
 import com.intellij.platform.lsp.api.LspServerManager
 import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
+import com.intellij.platform.lsp.api.customization.LspCompletionCustomizer
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
 import com.intellij.platform.lsp.api.customization.LspFormattingSupport
@@ -79,6 +80,7 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
 
         override val semanticTokensCustomizer: LspSemanticTokensCustomizer = AntSemanticTokensSupport()
         override val inlayHintCustomizer: LspInlayHintCustomizer = AntInlayHintSupport()
+        override val completionCustomizer: LspCompletionCustomizer = AntCompletionSupport()
     }
 
     private fun notifyNotFound(project: Project) {

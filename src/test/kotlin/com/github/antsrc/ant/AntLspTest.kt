@@ -96,6 +96,33 @@ class AntLspTest : BasePlatformTestCase() {
             assertTrue("completion offers String: " + items.map { it.lookupString }, items.any { it.lookupString == "String" })
         }
 
+        // Members after a dot inside a template interpolation, and import paths inside the string.
+        File(dir, "lib").mkdirs()
+        File(dir, "lib/util.ant").writeText("export func twice(n: int): int { n * 2 }\n")
+        LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(dir, "lib"))
+        val results = ArrayList<String>()
+        val cases = listOf(
+            "var m = Math.<caret>\n" to "PI",
+            "var t = `${'$'}{Math.<caret>}`\n" to "PI",
+            "import \"./lib/<caret>\"\n" to "util.ant",
+        )
+        for ((i, case) in cases.withIndex()) {
+            val (source, expected) = case
+            val caret = source.indexOf("<caret>")
+            val text2 = source.replace("<caret>", "")
+            val f = File(dir, "case$i.ant").apply { writeText(text2) }
+            val vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(f)!!
+            myFixture.openFileInEditor(vf)
+            waitFor("the client to open ${f.name}") { events.contains("opened ${f.name}") }
+            waitFor("diagnostics for ${f.name}") { events.contains("diagnostics ${f.name}") }
+            myFixture.editor.caretModel.moveToOffset(caret)
+            val found = myFixture.completeBasic()
+            val got = found?.map { it.lookupString } ?: listOf("<inserted: ${myFixture.editor.document.text.trim()}>")
+            val ok = found == null && myFixture.editor.document.text.contains(expected) || found != null && got.contains(expected)
+            results.add("${source.trim()} -> ${if (ok) "ok" else "MISSING $expected in $got"}")
+        }
+        assertTrue(results.joinToString("\n"), results.none { "MISSING" in it })
+
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!
         assertFalse(prelude.isWritable)
