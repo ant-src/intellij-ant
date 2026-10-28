@@ -3,6 +3,16 @@ package com.github.antsrc.ant
 import com.github.antsrc.ant.lsp.AntLspServerDescriptor
 import com.github.antsrc.ant.lsp.AntLspServerSupportProvider
 import com.github.antsrc.ant.lsp.AntPrelude
+import com.github.antsrc.ant.lsp.AntSymbol
+import com.github.antsrc.ant.lsp.AntUsageSearcher
+import com.intellij.codeInsight.navigation.actions.GotoDeclarationOrUsageHandler2
+import com.intellij.find.usages.api.PsiUsage
+import com.intellij.find.usages.api.UsageSearchParameters
+import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.util.TextRange
+import com.intellij.psi.search.GlobalSearchScope
 import com.github.antsrc.ant.settings.AntConfigurable
 import com.github.antsrc.ant.settings.AntExecutable
 import com.github.antsrc.ant.settings.AntSettings
@@ -19,6 +29,7 @@ import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * Starts the real `ant lsp`, from ANT_PATH or wherever [AntExecutable] finds it, and checks that
@@ -149,6 +160,35 @@ class AntLspTest : BasePlatformTestCase() {
             settings.typeHints = true
             settings.parameterHints = true
         }
+
+        // Navigation: a use of a function is a reference the IDE's symbol navigation resolves to
+        // its declaration, which is what Cmd+hover underlines and Cmd+click follows.
+        val nav = File(dir, "nav.ant").apply { writeText("func twice(n: int): int { n * 2 }\nvar four = twice(2)\n") }
+        val navFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(nav)!!
+        myFixture.openFileInEditor(navFile)
+        waitFor("the client to open nav.ant") { events.contains("opened nav.ant") }
+        waitFor("diagnostics for nav.ant") { events.contains("diagnostics nav.ant") }
+        val useOffset = myFixture.editor.document.text.indexOf("twice(2)") + 1
+        val declOffset = myFixture.editor.document.text.indexOf("twice(n") + 1
+        // These run on a background thread in the IDE, and insist on it.
+        fun <T> inBackground(compute: () -> T): T =
+            ApplicationManager.getApplication().executeOnPooledThread<T> { ReadAction.compute<T, Throwable> { compute() } }.get(30, TimeUnit.SECONDS)
+        val editor = myFixture.editor
+        val psiFile = myFixture.file
+        assertNotNull("Cmd+hover underlines the use of twice", inBackground { GotoDeclarationOrUsageHandler2.getCtrlMouseData(editor, psiFile, useOffset) })
+        assertEquals("Cmd+click on the use goes to the declaration", "GTD", inBackground { GotoDeclarationOrUsageHandler2.testGTDUOutcome(editor, psiFile, useOffset)?.name })
+        assertEquals("Cmd+click on the declaration shows usages", "SU", inBackground { GotoDeclarationOrUsageHandler2.testGTDUOutcome(editor, psiFile, declOffset)?.name })
+        myFixture.editor.caretModel.moveToOffset(useOffset)
+        myFixture.performEditorAction(IdeActions.ACTION_GOTO_DECLARATION)
+        assertEquals("Go to Declaration lands on the declaration", declOffset - 1, myFixture.editor.caretModel.offset)
+        val parameters = object : UsageSearchParameters {
+            override fun getProject() = this@AntLspTest.project
+            override fun areValid() = true
+            override val target get() = AntSymbol(project, navFile, TextRange(declOffset - 1, declOffset + 4), "twice")
+            override val searchScope get() = GlobalSearchScope.allScope(project)
+        }
+        val usages = inBackground { AntUsageSearcher().collectImmediateResults(parameters) }
+        assertEquals("one usage, the call: $usages", listOf(TextRange(useOffset - 1, useOffset + 4)), usages.map { (it as PsiUsage).range })
 
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!

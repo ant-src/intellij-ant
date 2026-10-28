@@ -21,6 +21,10 @@
         <langCodeStyleSettingsProvider implementation="com.github.antsrc.ant.editing.AntCodeStyleSettingsProvider"/>
 
         <platform.lsp.serverSupportProvider implementation="com.github.antsrc.ant.lsp.AntLspServerSupportProvider"/>
+        <!-- Navigation the IDE's LSP client leaves out: the link under Cmd+hover, and the usages of a declaration. -->
+        <gotoDeclarationHandler implementation="com.github.antsrc.ant.lsp.AntGotoDeclarationHandler"/>
+        <psi.declarationProvider implementation="com.github.antsrc.ant.lsp.AntDeclarationProvider"/>
+        <searcher forClass="com.intellij.find.usages.api.UsageSearchParameters" implementationClass="com.github.antsrc.ant.lsp.AntUsageSearcher"/>
 
         <configurationType implementation="com.github.antsrc.ant.run.AntRunConfigurationType"/>
         <runConfigurationProducer implementation="com.github.antsrc.ant.run.AntRunConfigurationProducer"/>
