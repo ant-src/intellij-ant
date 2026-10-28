@@ -14,9 +14,6 @@ class AntSettings : SimplePersistentStateComponent<AntSettings.State>(State()) {
     class State : BaseState() {
         /** The `ant` executable; empty means to look for it (see [AntExecutable]). */
         var antPath by string("")
-        /** Inlay hints from the server (lsp.md section 4): the inferred type after a `var`, and the parameter name before an argument. */
-        var typeHints by property(true)
-        var parameterHints by property(true)
     }
 
     var antPath: String
@@ -25,13 +22,6 @@ class AntSettings : SimplePersistentStateComponent<AntSettings.State>(State()) {
             state.antPath = value
             AntExecutable.forget()
         }
-
-    var typeHints: Boolean
-        get() = state.typeHints
-        set(value) { state.typeHints = value }
-    var parameterHints: Boolean
-        get() = state.parameterHints
-        set(value) { state.parameterHints = value }
 
     companion object {
         fun getInstance(): AntSettings = ApplicationManager.getApplication().getService(AntSettings::class.java)
