@@ -1,6 +1,6 @@
 package com.github.antsrc.ant.settings
 
-import com.intellij.openapi.fileChooser.FileChooserDescriptor
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
@@ -16,7 +16,7 @@ class AntConfigurable : BoundConfigurable("Ant") {
     override fun createPanel() = panel {
         row("Ant executable:") {
             val field = TextFieldWithBrowseButton()
-            field.addBrowseFolderListener(null, FileChooserDescriptor(true, false, false, false, false, false).withTitle("Ant Executable"))
+            field.addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor().withTitle("Ant Executable"))
             cell(field).align(AlignX.FILL)
                 .bindText({ settings.antPath }, { settings.antPath = it.trim() })
                 .comment("Empty means ant on PATH, then in \$GOBIN, then in the bin directory of go env GOPATH, then ~/go/bin.<br>" +
