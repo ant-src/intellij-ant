@@ -82,3 +82,12 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         }
     }
 }
+
+class AntRunLineMarkerTest : BasePlatformTestCase() {
+    fun testOneMarkerOnTheFirstCodeToken() {
+        val file = myFixture.configureByText("main.ant", "// spec: stdlib Net\n//! A line server.\n//!   ant run echo.ant\n\nfunc session(c: int): void {\n  c\n}\nsession(1)\n")
+        val contributor = com.github.antsrc.ant.run.AntRunLineMarkerContributor()
+        val marked = generateSequence(file.firstChild) { it.nextSibling }.filter { contributor.getInfo(it) != null }.map { it.text }.toList()
+        assertEquals(listOf("func"), marked)
+    }
+}
