@@ -4,7 +4,7 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
-import com.intellij.codeInsight.hints.InlayHintsFactory
+import com.intellij.psi.PsiManager
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.bindSelected
@@ -42,11 +42,14 @@ class AntConfigurable : BoundConfigurable("Ant") {
     companion object {
         /**
          * Makes every editor show its inlay hints again by the settings. The hint passes run only
-         * when a file changed, so their stamps are reset first.
+         * when the PSI changed since they last ran, so the PSI caches are dropped, which counts as
+         * a change, before highlighting restarts.
          */
         fun refreshHints() {
-            InlayHintsFactory.forceHintsUpdateOnNextPass()
-            for (project in ProjectManager.getInstance().openProjects) DaemonCodeAnalyzer.getInstance(project).restart()
+            for (project in ProjectManager.getInstance().openProjects) {
+                PsiManager.getInstance(project).dropPsiCaches()
+                DaemonCodeAnalyzer.getInstance(project).restart()
+            }
         }
     }
 }

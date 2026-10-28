@@ -20,6 +20,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.backend.presentation.TargetPresentation
 import com.intellij.psi.PsiElement
 import com.intellij.psi.impl.source.tree.LeafPsiElement
+import com.intellij.util.Query
 
 /**
  * A name the server says is declared where it stands is a declaration: Cmd+click on it shows the
@@ -56,6 +57,10 @@ data class AntSymbol(val project: Project, val file: VirtualFile, val range: Tex
 }
 
 class AntUsageSearcher : UsageSearcher {
+    // The results come at once from the server; there are no requests to run later.
+    override fun collectSearchRequest(parameters: UsageSearchParameters): Query<out Usage>? = null
+    override fun collectSearchRequests(parameters: UsageSearchParameters): Collection<Query<out Usage>> = emptyList()
+
     override fun collectImmediateResults(parameters: UsageSearchParameters): Collection<Usage> {
         val target = parameters.target as? AntSymbol ?: return emptyList()
         val document = FileDocumentManager.getInstance().getDocument(target.file) ?: return emptyList()
