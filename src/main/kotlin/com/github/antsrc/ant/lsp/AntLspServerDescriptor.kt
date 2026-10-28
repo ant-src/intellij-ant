@@ -96,7 +96,10 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         private val LOG = logger<AntLspServerDescriptor>()
         private const val REQUEST_TIMEOUT_MS = 10_000
 
+        /** `ant lsp` in the project's directory, when there is one on disk (a test project may have none). */
         fun commandLine(ant: String, project: Project): GeneralCommandLine =
-            GeneralCommandLine(ant, "lsp").withWorkDirectory(project.basePath).withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
+            GeneralCommandLine(ant, "lsp")
+                .withWorkDirectory(project.basePath?.takeIf { java.io.File(it).isDirectory })
+                .withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
     }
 }
