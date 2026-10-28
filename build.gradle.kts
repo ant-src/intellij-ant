@@ -20,13 +20,12 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        // The oldest platform the plugin supports; the verifier checks the newer ones below.
-        intellijIdeaCommunity("2024.3.6")
-        plugin("com.redhat.devtools.lsp4ij:0.21.0")
+        // The oldest platform the plugin supports, and the first with the IDE's LSP client
+        // complete enough for Ant (signature help, structure view, selection range); the
+        // verifier checks the newer ones below.
+        intellijIdea("2025.3")
         testFramework(TestFrameworkType.Platform)
     }
-    // The platform bundles one LSP4J (in lib/lib.jar, first on the compile classpath) and LSP4IJ
-    // another, which the plugin's classes see in the IDE; the plugin uses only what both have.
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -39,9 +38,9 @@ java {
 kotlin {
     jvmToolchain(21)
     compilerOptions {
-        // 2024.3 bundles Kotlin 2.0, so the plugin's bytecode and standard library calls stay there.
-        apiVersion = KotlinVersion.KOTLIN_2_0
-        languageVersion = KotlinVersion.KOTLIN_2_0
+        // 2025.3 bundles Kotlin 2.2, so the plugin's bytecode and standard library calls stay there.
+        apiVersion = KotlinVersion.KOTLIN_2_2
+        languageVersion = KotlinVersion.KOTLIN_2_2
     }
 }
 
@@ -59,7 +58,7 @@ intellijPlatform {
                 .joinToString("\n") { "<p>" + it.replace("\n", " ") + "</p>" }
         }
         ideaVersion {
-            sinceBuild = "243"
+            sinceBuild = "253"
             untilBuild = provider { null }
         }
         vendor {
@@ -69,7 +68,6 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            create(IntelliJPlatformType.IntellijIdea, "2025.3")
             create(IntelliJPlatformType.IntellijIdea, "2026.2.3")
         }
     }

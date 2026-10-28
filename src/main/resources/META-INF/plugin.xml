@@ -4,7 +4,8 @@
     <vendor url="https://github.com/ant-src">ant-lang</vendor>
 
     <depends>com.intellij.modules.platform</depends>
-    <depends>com.redhat.devtools.lsp4ij</depends>
+    <!-- The IDE's Language Server Protocol client, which runs ant lsp. -->
+    <depends>com.intellij.modules.lsp</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileType name="Ant" language="Ant" extensions="ant" fieldName="INSTANCE"
@@ -19,11 +20,7 @@
         <lang.formatter language="Ant" implementationClass="com.github.antsrc.ant.editing.AntFormattingModelBuilder"/>
         <langCodeStyleSettingsProvider implementation="com.github.antsrc.ant.editing.AntCodeStyleSettingsProvider"/>
 
-        <!-- The features the language server provides that LSP4IJ registers per language. -->
-        <lang.foldingBuilder language="Ant" implementationClass="com.redhat.devtools.lsp4ij.features.foldingRange.LSPFoldingRangeBuilder"/>
-        <lang.psiStructureViewFactory language="Ant" implementationClass="com.redhat.devtools.lsp4ij.features.documentSymbol.LSPDocumentSymbolStructureViewFactory"/>
-        <codeInsight.parameterInfo language="Ant" implementationClass="com.redhat.devtools.lsp4ij.features.signatureHelp.LSPParameterInfoHandler"/>
-        <codeBlockProvider language="Ant" implementationClass="com.redhat.devtools.lsp4ij.features.codeBlockProvider.LSPCodeBlockProvider"/>
+        <platform.lsp.serverSupportProvider implementation="com.github.antsrc.ant.lsp.AntLspServerSupportProvider"/>
 
         <configurationType implementation="com.github.antsrc.ant.run.AntRunConfigurationType"/>
         <runConfigurationProducer implementation="com.github.antsrc.ant.run.AntRunConfigurationProducer"/>
@@ -34,16 +31,4 @@
         <notificationGroup id="Ant" displayType="BALLOON"/>
     </extensions>
 
-    <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
-        <server id="ant" name="Ant" factoryClass="com.github.antsrc.ant.lsp.AntLanguageServerFactory">
-            <description><![CDATA[
-            <p><code>ant lsp</code>, the Ant language server: diagnostics, completion, hover, signature help,
-            navigation, references, rename, symbols, formatting with <code>ant fmt</code>, folding, semantic
-            highlighting, inlay hints, and quick fixes.</p>
-            <p>The executable is found on PATH or set in Settings | Languages &amp; Frameworks | Ant.</p>
-            ]]></description>
-        </server>
-        <languageMapping language="Ant" serverId="ant" languageId="ant"/>
-        <semanticTokensColorsProvider serverId="ant" class="com.github.antsrc.ant.lsp.AntSemanticTokensColorsProvider"/>
-    </extensions>
 </idea-plugin>

@@ -1,24 +1,23 @@
 package com.github.antsrc.ant
 
+import com.github.antsrc.ant.lsp.AntLspServerDescriptor
+import com.github.antsrc.ant.lsp.AntLspServerSupportProvider
 import com.github.antsrc.ant.lsp.AntPrelude
 import com.github.antsrc.ant.settings.AntExecutable
-import com.github.antsrc.ant.settings.AntLsp
 import com.github.antsrc.ant.settings.AntSettings
+import com.intellij.codeInsight.daemon.impl.HighlightInfo
+import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
-import com.redhat.devtools.lsp4ij.JSONUtils
-import com.redhat.devtools.lsp4ij.LSPIJUtils
-import com.redhat.devtools.lsp4ij.LanguageServerItem
-import org.eclipse.lsp4j.Diagnostic
-import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess
+import com.intellij.platform.lsp.api.LspServer
+import com.intellij.platform.lsp.api.LspServerManager
+import com.intellij.platform.lsp.api.LspServerManagerListener
+import com.intellij.platform.lsp.api.LspServerState
 import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import com.redhat.devtools.lsp4ij.LanguageServerManager
-import com.redhat.devtools.lsp4ij.ServerStatus
 import java.io.File
-import java.nio.file.Files
-import java.util.concurrent.TimeUnit
 
 /**
  * Starts the real `ant lsp`, from ANT_PATH or wherever [AntExecutable] finds it, and checks that
@@ -30,6 +29,8 @@ import java.util.concurrent.TimeUnit
 class AntLspTest : BasePlatformTestCase() {
     private var antPath = ""
     private var dir: File? = null
+    private var contentRoot: VirtualFile? = null
+    private val events = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     override fun setUp() {
         super.setUp()
@@ -39,8 +40,9 @@ class AntLspTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            LanguageServerManager.getInstance(project).stop(AntLsp.SERVER_ID)
+            LspServerManager.getInstance(project).stopServers(AntLspServerSupportProvider::class.java)
             AntSettings.getInstance().antPath = antPath
+            contentRoot?.let { PsiTestUtil.removeContentEntry(myFixture.module, it) }
             dir?.deleteRecursively()
         } finally {
             super.tearDown()
@@ -56,33 +58,43 @@ class AntLspTest : BasePlatformTestCase() {
     fun testDiagnosticsCompletionAndPrelude() {
         if (!antAvailable()) return
         val text = "var n: int = \"text\"\nvar s = Str\n"
-        val dir = Files.createTempDirectory("ant-lsp").toFile().canonicalFile.also { dir = it }
-        VfsRootAccess.allowRootAccess(testRootDisposable, dir.path)
+        // A content root on disk: the IDE's client serves the files of the project's content.
+        val dir = File(project.basePath!!, "ant-lsp").apply { mkdirs() }.also { dir = it }
         val file = File(dir, "main.ant").apply { writeText(text) }
+        val dirFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(dir)!!
+        PsiTestUtil.addContentRoot(myFixture.module, dirFile)
+        contentRoot = dirFile
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file)!!
+        val manager = LspServerManager.getInstance(project)
+        manager.addLspServerManagerListener(object : LspServerManagerListener {
+            override fun fileOpened(lspServer: LspServer, file: VirtualFile) { events.add("opened ${file.name}") }
+            override fun diagnosticsReceived(lspServer: LspServer, file: VirtualFile) { events.add("diagnostics ${file.name}") }
+            override fun serverStateChanged(lspServer: LspServer) { events.add("state ${lspServer.state}") }
+        }, testRootDisposable, true)
         myFixture.openFileInEditor(virtualFile)
         myFixture.editor.caretModel.moveToOffset(text.indexOf("Str") + 3)
 
-        val server = LanguageServerManager.getInstance(project).getLanguageServer(AntLsp.SERVER_ID).get(30, TimeUnit.SECONDS)
-        assertNotNull("the server definition is known", server)
-        waitFor("the server to start") { server!!.serverWrapper.serverStatus == ServerStatus.started }
-        // The diagnostics the server published for the document, as LSP4IJ keeps them before it
-        // paints them in the editor (which happens outside the highlighting passes a test can run).
-        var diagnostics: List<Diagnostic> = emptyList()
-        waitFor("the diagnostics of the document") {
-            diagnostics = diagnostics(server!!, virtualFile)
-            diagnostics.size == 2
+        manager.ensureServerStarted(AntLspServerSupportProvider::class.java, AntLspServerDescriptor(project))
+        waitFor("the server to run") {
+            manager.getServersForProvider(AntLspServerSupportProvider::class.java).any { it.state == LspServerState.Running }
         }
-        // Read as JSON: LSP4J's Diagnostic API differs between the version LSP4IJ runs and the
-        // one the platform bundles, which the test is compiled against.
-        val messages = diagnostics.map { JSONUtils.getLsp4jGson().toJson(it) }
-        assertTrue(messages.toString(), messages.any { it.contains("cannot use string where int is expected") })
-        assertTrue(messages.toString(), messages.any { it.contains("Str is not defined") })
-        assertTrue(messages.toString(), messages.all { it.contains("\"severity\":1") })
 
+        var infos: List<HighlightInfo> = emptyList()
+        waitFor("a diagnostic on the bad assignment") {
+            infos = myFixture.doHighlighting()
+            infos.any { it.severity == HighlightSeverity.ERROR && it.text == "\"text\"" }
+        }
+        val errors = infos.filter { it.severity == HighlightSeverity.ERROR }.map { "${it.text}: ${it.description}" }
+        assertTrue(errors.toString(), errors.any { it.startsWith("\"text\": cannot use string where int is expected") })
+        assertTrue(errors.toString(), errors.any { it == "Str: Str is not defined" })
+
+        // With one match the editor inserts it and returns no list.
         val items = myFixture.completeBasic()
-        assertNotNull("completion items", items)
-        assertTrue("completion offers String: " + items!!.map { it.lookupString }, items.any { it.lookupString == "String" })
+        if (items == null) {
+            assertTrue(myFixture.editor.document.text, myFixture.editor.document.text.contains("var s = String"))
+        } else {
+            assertTrue("completion offers String: " + items.map { it.lookupString }, items.any { it.lookupString == "String" })
+        }
 
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!
@@ -90,15 +102,12 @@ class AntLspTest : BasePlatformTestCase() {
         assertTrue(String(prelude.contentsToByteArray()).contains("func String."))
     }
 
-    private fun diagnostics(server: LanguageServerItem, file: VirtualFile): List<Diagnostic> =
-        server.serverWrapper.getOpenedDocument(LSPIJUtils.toUri(file))?.diagnostics?.toList() ?: emptyList()
-
     private fun waitFor(what: String, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + 30_000
         while (!condition()) {
             if (System.currentTimeMillis() > deadline) {
-                val item = LanguageServerManager.getInstance(project).getLanguageServer(AntLsp.SERVER_ID).getNow(null)
-                fail("timed out waiting for $what; server status ${item?.serverWrapper?.serverStatus}, documents ${item?.serverWrapper?.openedDocuments?.map { it.toString() }}")
+                val servers = LspServerManager.getInstance(project).getServersForProvider(AntLspServerSupportProvider::class.java)
+                fail("timed out waiting for $what; servers ${servers.map { it.state }}, events $events, highlights ${myFixture.doHighlighting().map { "${it.severity}:${it.text}:${it.description}" }}")
             }
             NonBlockingReadActionImpl.waitForAsyncTaskCompletion()
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()

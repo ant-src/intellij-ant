@@ -6,7 +6,7 @@ matching, comments, indentation, and run configurations for `.ant` files, with t
 server behind completion, diagnostics, hover, navigation, rename, formatting, and more.
 
 The plugin needs the `ant` command, installed with `go install github.com/ant-src/ant/cmd/ant@latest`,
-and the LSP4IJ plugin, which it depends on and which the IDE installs with it.
+and IntelliJ IDEA 2025.3 or later, whose built-in Language Server Protocol client runs it.
 <!-- plugin description end -->
 
 ## What it does
@@ -22,25 +22,27 @@ The plugin itself knows the language's lexical structure (`spec/ant-lang.md` sec
 - Run configurations: Run 'file.ant' runs `ant run` with the file's arguments, working directory,
   and environment; a `path:line:col` in the output opens the file there.
 
-Everything that needs to understand the program comes from `ant lsp`, through
-[LSP4IJ](https://github.com/redhat-developer/lsp4ij): errors as you type, completion, hover with
-types and doc comments, signature help, go to declaration (into the prelude too, as a read-only
-document), find usages, highlight usages, rename, the structure view and breadcrumbs, go to symbol,
-Reformat Code with `ant fmt`, folding, extend selection, semantic highlighting, inlay hints, and
-quick fixes. `spec/lsp.md` in the [spec](https://github.com/ant-src/spec) is the contract.
+Everything that needs to understand the program comes from `ant lsp`, through the IDE's own
+[Language Server Protocol client](https://plugins.jetbrains.com/docs/intellij/language-server-protocol.html):
+errors as you type, completion, hover with types and doc comments, signature help, go to
+declaration (into the prelude too, as a read-only document), find usages, highlight usages, the
+structure view and breadcrumbs, go to symbol, Reformat Code with `ant fmt`, folding, extend
+selection, semantic highlighting, inlay hints, and quick fixes; rename arrives with IDEA 2026.1,
+where the IDE's client learned it. `spec/lsp.md` in the [spec](https://github.com/ant-src/spec) is
+the contract.
 
 ## Setup
 
-1. Install the plugin. It depends on LSP4IJ, which the IDE installs with it.
+1. Install the plugin.
 2. Install `ant` with `go install github.com/ant-src/ant/cmd/ant@latest`. The plugin looks for `ant`
    on PATH, then in `$GOBIN`, then in the `bin` directory of `go env GOPATH`, then in `~/go/bin`;
    a shell script named `ant`, such as Apache Ant's launcher, is passed over. Settings |
    Languages & Frameworks | Ant names the executable when it is somewhere else.
-3. Open a `.ant` file. The server starts with the first one; Settings | Languages & Frameworks |
-   Language Servers | Ant has its console and trace.
+3. Open a `.ant` file. The server starts with the first one; the language services widget in the
+   status bar shows it and restarts it.
 
-The plugin runs on IntelliJ IDEA 2024.3 and later, Community and Ultimate, and on the other
-IntelliJ-based IDEs of the same versions.
+The plugin runs on IntelliJ IDEA 2025.3 and later and on the other IntelliJ-based IDEs of the same
+versions. The IDE's LSP client is not in IntelliJ IDEA's open-source builds or in Android Studio.
 
 ## Development
 

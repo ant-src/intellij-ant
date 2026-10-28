@@ -2,12 +2,11 @@ package com.github.antsrc.ant.settings
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.BoundConfigurable
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
-import com.redhat.devtools.lsp4ij.LanguageServerManager
+import com.github.antsrc.ant.lsp.AntLspServerSupportProvider
 
 /** Settings | Languages & Frameworks | Ant. */
 class AntConfigurable : BoundConfigurable("Ant") {
@@ -27,10 +26,6 @@ class AntConfigurable : BoundConfigurable("Ant") {
     override fun apply() {
         val before = settings.antPath
         super.apply()
-        if (settings.antPath != before) {
-            for (project in ProjectManager.getInstance().openProjects) {
-                LanguageServerManager.getInstance(project).start(AntLsp.SERVER_ID, LanguageServerManager.StartOptions().setForceRestart(true))
-            }
-        }
+        if (settings.antPath != before) AntLspServerSupportProvider.restartAll()
     }
 }
