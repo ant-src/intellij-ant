@@ -2,7 +2,7 @@ package com.github.antsrc.ant.run
 
 import com.intellij.execution.configuration.EnvironmentVariablesComponent
 import com.intellij.execution.ui.CommonParameterFragments
-import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
@@ -12,11 +12,11 @@ import javax.swing.JComponent
 
 class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguration>() {
     private val file = TextFieldWithBrowseButton().apply {
-        addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileDescriptor("ant").withTitle("Ant File"))
+        addBrowseFolderListener(project, FileChooserDescriptor(true, false, false, false, false, false).withFileFilter { it.extension == "ant" }.withTitle("Ant File"))
     }
     private val arguments = RawCommandLineEditor()
     private val workingDirectory = TextFieldWithBrowseButton().apply {
-        addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle("Working Directory"))
+        addBrowseFolderListener(project, FileChooserDescriptor(false, true, false, false, false, false).withTitle("Working Directory"))
     }
     private val environment = EnvironmentVariablesComponent()
 
