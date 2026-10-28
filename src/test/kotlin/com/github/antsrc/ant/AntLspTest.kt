@@ -3,6 +3,7 @@ package com.github.antsrc.ant
 import com.github.antsrc.ant.lsp.AntLspServerDescriptor
 import com.github.antsrc.ant.lsp.AntLspServerSupportProvider
 import com.github.antsrc.ant.lsp.AntPrelude
+import com.github.antsrc.ant.settings.AntConfigurable
 import com.github.antsrc.ant.settings.AntExecutable
 import com.github.antsrc.ant.settings.AntSettings
 import com.intellij.codeInsight.daemon.impl.HighlightInfo
@@ -122,6 +123,32 @@ class AntLspTest : BasePlatformTestCase() {
             results.add("${source.trim()} -> ${if (ok) "ok" else "MISSING $expected in $got"}")
         }
         assertTrue(results.joinToString("\n"), results.none { "MISSING" in it })
+
+        // Inlay hints follow the settings: the inferred type of count, and the parameter name of the argument.
+        val hints = File(dir, "hints.ant").apply { writeText("var count = 1\nprintln(count)\n") }
+        val hintsFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(hints)!!
+        myFixture.openFileInEditor(hintsFile)
+        waitFor("the client to open hints.ant") { events.contains("opened hints.ant") }
+        fun inlays(): List<String> {
+            myFixture.doHighlighting()
+            return myFixture.editor.inlayModel.getInlineElementsInRange(0, myFixture.editor.document.textLength).map { it.renderer.toString() }
+        }
+        waitFor("two inlay hints") { inlays().size == 2 }
+        val settings = AntSettings.getInstance()
+        try {
+            settings.typeHints = false
+            AntConfigurable.refreshHints()
+            waitFor("one inlay hint without the type") { inlays().size == 1 }
+            settings.parameterHints = false
+            AntConfigurable.refreshHints()
+            waitFor("no inlay hints") { inlays().isEmpty() }
+            settings.typeHints = true
+            AntConfigurable.refreshHints()
+            waitFor("the type hint back") { inlays().size == 1 }
+        } finally {
+            settings.typeHints = true
+            settings.parameterHints = true
+        }
 
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!
