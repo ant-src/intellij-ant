@@ -18,6 +18,7 @@ import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
 import com.intellij.platform.lsp.api.customization.LspFormattingSupport
+import com.intellij.platform.lsp.api.customization.LspInlayHintCustomizer
 import com.intellij.platform.lsp.api.customization.LspSemanticTokensCustomizer
 import org.eclipse.lsp4j.InitializeResult
 import org.eclipse.lsp4j.services.LanguageServer
@@ -77,6 +78,7 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         }
 
         override val semanticTokensCustomizer: LspSemanticTokensCustomizer = AntSemanticTokensSupport()
+        override val inlayHintCustomizer: LspInlayHintCustomizer = AntInlayHintSupport()
     }
 
     private fun notifyNotFound(project: Project) {
