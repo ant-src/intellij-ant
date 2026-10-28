@@ -1,6 +1,9 @@
 package com.github.antsrc.ant.lsp
 
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
@@ -16,6 +19,9 @@ import org.eclipse.lsp4j.Position
 import org.eclipse.lsp4j.Range
 import org.eclipse.lsp4j.ReferenceContext
 import org.eclipse.lsp4j.ReferenceParams
+import org.eclipse.lsp4j.services.LanguageServer
+import java.util.concurrent.CancellationException
+import java.util.concurrent.CompletableFuture
 
 /**
  * Requests to the running `ant lsp` that the plugin makes itself, for what the IDE's client
@@ -28,13 +34,24 @@ object AntLspRequests {
         LspServerManager.getInstance(project).getServersForProvider(AntLspServerSupportProvider::class.java)
             .firstOrNull { it.state == LspServerState.Running && it.descriptor.isSupportedFile(file) }
 
-    /** Where the name at offset in file is declared. */
+    /**
+     * Where the name at offset in file is declared. The answer is kept for the document as it is,
+     * since a hover asks twice (the declaration handler and the declaration provider).
+     */
     fun definitions(project: Project, file: VirtualFile, document: Document, offset: Int): List<Target> {
+        val key = Triple(file.url, document.modificationStamp, offset)
+        synchronized(cache) { cache[key] }?.let { return it }
         val server = server(project, file) ?: return emptyList()
         val params = DefinitionParams(server.getDocumentIdentifier(file), position(document, offset))
         val result = request(server) { it.textDocumentService.definition(params) } ?: return emptyList()
         val locations = if (result.isLeft) result.left else result.right.map { Location(it.targetUri, it.targetSelectionRange) }
-        return locations.mapNotNull { target(project, server, it) }
+        val targets = locations.mapNotNull { target(project, server, it) }
+        synchronized(cache) { cache[key] = targets }
+        return targets
+    }
+
+    private val cache = object : LinkedHashMap<Triple<String, Long, Int>, List<Target>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Triple<String, Long, Int>, List<Target>>) = size > 32
     }
 
     /** Every use of the declaration at offset in file, without the declaration itself. */
@@ -45,12 +62,24 @@ object AntLspRequests {
         return result.mapNotNull { target(project, server, it) }
     }
 
-    private fun <T> request(server: LspServer, call: (org.eclipse.lsp4j.services.LanguageServer) -> java.util.concurrent.CompletableFuture<T>): T? =
-        try {
+    /**
+     * Asks the server and waits, on a background thread only: the editor's thread never waits on
+     * the server, so a caller there gets no answer. A cancellation passes through, so that the
+     * read action is run again, as the platform expects.
+     */
+    private fun <T> request(server: LspServer, call: (LanguageServer) -> CompletableFuture<T>): T? {
+        if (ApplicationManager.getApplication().isDispatchThread) return null
+        return try {
             server.sendRequestSync(REQUEST_TIMEOUT_MS, call)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            LOG.debug("request to ant lsp failed", e)
             null
         }
+    }
 
     /** A location in a file the IDE knows: the prelude's document counts too. */
     class Target(val file: PsiFile, val range: TextRange) {
@@ -82,4 +111,5 @@ object AntLspRequests {
     }
 
     private const val REQUEST_TIMEOUT_MS = 5_000
+    private val LOG = logger<AntLspRequests>()
 }

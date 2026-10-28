@@ -82,7 +82,10 @@ val antRepo = layout.projectDirectory.dir("../ant")
 val builtAnt = layout.buildDirectory.file("ant/ant")
 
 val buildAnt by tasks.registering(Exec::class) {
-    onlyIf { System.getenv("ANT_PATH").isNullOrBlank() && antRepo.asFile.isDirectory }
+    onlyIf {
+        System.getenv("ANT_PATH").isNullOrBlank() && antRepo.asFile.isDirectory &&
+            (System.getenv("PATH") ?: "").split(File.pathSeparator).any { File(it, "go").canExecute() || File(it, "go.exe").canExecute() }
+    }
     workingDir(antRepo)
     commandLine("go", "build", "-o", builtAnt.get().asFile.absolutePath, "./cmd/ant")
     isIgnoreExitValue = true

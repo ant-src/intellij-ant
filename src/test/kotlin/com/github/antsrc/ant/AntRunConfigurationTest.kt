@@ -28,18 +28,29 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
     }
 
     fun testCommandLine() {
-        AntSettings.getInstance().antPath = "/opt/ant/bin/ant"
+        // The configured executable must exist; a file stands in for it.
+        val ant = File(Files.createTempDirectory("ant-bin").toFile(), "ant").apply { writeText("") }
+        AntSettings.getInstance().antPath = ant.path
+        AntExecutable.forget()
         val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
         val configuration = type.factory.createTemplateConfiguration(project) as AntRunConfiguration
         configuration.file = "/tmp/dir/main.ant"
         configuration.arguments = "a \"b c\""
         val cmd = configuration.commandLine()
-        assertEquals("/opt/ant/bin/ant", cmd.exePath)
+        assertEquals(ant.path, cmd.exePath)
         assertEquals(listOf("run", "/tmp/dir/main.ant", "a", "b c"), cmd.parametersList.parameters)
         assertEquals("/tmp/dir", cmd.workDirectory.path)
         configuration.workingDirectory = "/tmp"
         assertEquals("/tmp", configuration.commandLine().workDirectory.path)
         assertEquals("main.ant", configuration.suggestedName())
+        AntSettings.getInstance().antPath = File(Files.createTempDirectory("no-ant").toFile(), "ant").path
+        AntExecutable.forget()
+        try {
+            configuration.commandLine()
+            fail("without ant there is no command line")
+        } catch (e: com.intellij.execution.ExecutionException) {
+            assertTrue(e.message!!.contains("Settings"))
+        }
         try {
             configuration.checkConfiguration()
             fail("a missing file is an error")
@@ -50,15 +61,14 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
 
     fun testProducerFromAntFile() {
         val file = myFixture.addFileToProject("dir/main.ant", "println(1)")
-        val context = ConfigurationContext.getFromContext(myFixture.editor?.let { null } ?: run {
-            myFixture.openFileInEditor(file.virtualFile)
-            com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
-                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
-                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_FILE, file)
-                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_ELEMENT, file.firstChild)
-                .add(com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE, file.virtualFile)
-                .build()
-        }, "test")
+        myFixture.openFileInEditor(file.virtualFile)
+        val dataContext = com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_FILE, file)
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_ELEMENT, file.firstChild)
+            .add(com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE, file.virtualFile)
+            .build()
+        val context = ConfigurationContext.getFromContext(dataContext, "test")
         val settings = context.configurationsFromContext?.singleOrNull() ?: throw AssertionError("one configuration from an Ant file")
         val configuration = settings.configuration as AntRunConfiguration
         assertEquals(file.virtualFile.path, configuration.file)

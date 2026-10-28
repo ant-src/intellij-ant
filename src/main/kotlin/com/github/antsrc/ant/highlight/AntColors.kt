@@ -44,7 +44,7 @@ object AntColors {
     @JvmField val FUNCTION_CALL = key("ANT_FUNCTION_CALL", D.FUNCTION_CALL)
     @JvmField val PARAMETER = key("ANT_PARAMETER", D.PARAMETER)
     @JvmField val VARIABLE = key("ANT_VARIABLE", D.LOCAL_VARIABLE)
-    @JvmField val GLOBAL_VARIABLE = key("ANT_GLOBAL_VARIABLE", D.GLOBAL_VARIABLE)
+    @JvmField val CONSTANT = key("ANT_CONSTANT", D.CONSTANT)
     @JvmField val FIELD = key("ANT_FIELD", D.INSTANCE_FIELD)
     @JvmField val PRELUDE = key("ANT_PRELUDE", D.PREDEFINED_SYMBOL)
 }

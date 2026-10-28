@@ -28,7 +28,7 @@ class AntSemanticTokensSupport : LspSemanticTokensSupport() {
             SemanticTokenTypes.Parameter -> AntColors.PARAMETER
             SemanticTokenTypes.Variable -> when {
                 prelude -> AntColors.PRELUDE
-                "global" in tokenModifiers || SemanticTokenModifiers.Static in tokenModifiers -> AntColors.GLOBAL_VARIABLE
+                SemanticTokenModifiers.Readonly in tokenModifiers -> AntColors.CONSTANT
                 else -> AntColors.VARIABLE
             }
             SemanticTokenTypes.Property -> AntColors.FIELD

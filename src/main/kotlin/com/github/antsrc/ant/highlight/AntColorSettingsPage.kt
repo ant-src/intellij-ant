@@ -52,7 +52,7 @@ class AntColorSettingsPage : ColorSettingsPage {
             AttributesDescriptor("Semantic//Function call", AntColors.FUNCTION_CALL),
             AttributesDescriptor("Semantic//Parameter", AntColors.PARAMETER),
             AttributesDescriptor("Semantic//Variable", AntColors.VARIABLE),
-            AttributesDescriptor("Semantic//Top-level variable", AntColors.GLOBAL_VARIABLE),
+            AttributesDescriptor("Semantic//Constant", AntColors.CONSTANT),
             AttributesDescriptor("Semantic//Field", AntColors.FIELD),
             AttributesDescriptor("Semantic//Prelude name", AntColors.PRELUDE),
         )
@@ -65,7 +65,7 @@ class AntColorSettingsPage : ColorSettingsPage {
             "fcall" to AntColors.FUNCTION_CALL,
             "param" to AntColors.PARAMETER,
             "var" to AntColors.VARIABLE,
-            "gvar" to AntColors.GLOBAL_VARIABLE,
+            "const" to AntColors.CONSTANT,
             "field" to AntColors.FIELD,
             "prelude" to AntColors.PRELUDE,
         )
@@ -83,17 +83,17 @@ class AntColorSettingsPage : ColorSettingsPage {
             // area returns the area of s.
             export func <fdecl>area</fdecl>(<param>s</param>: <type>Shape</type>): float64 {
               if <param>s</param> is <type>Circle</type> {
-                return <prelude>Math</prelude>.pi * <param>s</param>.<field>r</field> * <param>s</param>.<field>r</field>
+                return <prelude>Math</prelude>.<const>PI</const> * <param>s</param>.<field>r</field> * <param>s</param>.<field>r</field>
               }
               return <param>s</param>.<field>w</field> * <param>s</param>.<field>h</field>
             }
 
-            var <gvar>shapes</gvar>: Array[<type>Shape</type>] = [Circle{ r: 1.5 }, Rect{ w: 2, h: 0x10 }]
-            var <gvar>total</gvar> = <gvar>shapes</gvar>
+            var <var>shapes</var>: Array[<type>Shape</type>] = [Circle{ r: 1.5 }, Rect{ w: 2, h: 0x10 }]
+            var <var>total</var> = <var>shapes</var>
               | <prelude>Array</prelude>.<fcall>map</fcall>({ <fcall>area</fcall>(<var>x</var>) })
               | <prelude>Array</prelude>.<fcall>sum</fcall>()
-            <prelude>println</prelude>(`total: ${'$'}{<gvar>total</gvar>} over ${'$'}{<gvar>shapes</gvar>.length}\n`)
-            var <gvar>ok</gvar> = <prelude>Regex</prelude>.<fcall>test</fcall>(/^\d+$/i, "42\u{1F600}\q")
+            <prelude>println</prelude>(`total: ${'$'}{<var>total</var>} over ${'$'}{<var>shapes</var>.length}\n`)
+            var <var>ok</var> = <prelude>Regex</prelude>.<fcall>test</fcall>(/^\d+$/i, "42\u{1F600}\q")
             let x = 1
 
             func <fdecl>card</fdecl>(<param>title</param>: string, <param>items</param>: Array[string]): Html {

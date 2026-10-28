@@ -160,6 +160,11 @@ private class LeafBlock(val node: ASTNode, private val indent: Indent) : Block {
 }
 
 private class GroupBlock(private val range: TextRange, private val children: List<Block>, private val indent: Indent, private val inner: Boolean) : Block {
+    /** Whether the last child closes the group: a closing bracket, or the > or /> of a tag. */
+    private val closed = (children.lastOrNull() as? LeafBlock)?.node?.elementType.let {
+        it != null && (it in T.CLOSERS || it == T.TAG_CLOSE || it == T.TAG_SELF_CLOSE)
+    }
+
     override fun getTextRange() = range
     override fun getSubBlocks() = children
     override fun getWrap(): Wrap? = null
@@ -170,15 +175,10 @@ private class GroupBlock(private val range: TextRange, private val children: Lis
     /** A new line inside the brackets is indented; one after the closer, or at the top level, is not. */
     override fun getChildAttributes(newChildIndex: Int): ChildAttributes {
         if (!inner) return ChildAttributes(Indent.getNoneIndent(), null)
-        val last = children.lastOrNull()
-        val closed = last is LeafBlock && (last.node.elementType in T.CLOSERS || last.node.elementType == T.TAG_CLOSE || last.node.elementType == T.TAG_SELF_CLOSE)
         return if (closed && newChildIndex >= children.size) ChildAttributes(Indent.getNoneIndent(), null) else ChildAttributes(Indent.getNormalIndent(), null)
     }
 
-    override fun isIncomplete(): Boolean {
-        val last = children.lastOrNull()
-        return inner && !(last is LeafBlock && (last.node.elementType in T.CLOSERS || last.node.elementType == T.TAG_CLOSE || last.node.elementType == T.TAG_SELF_CLOSE))
-    }
+    override fun isIncomplete() = inner && !closed
 
     override fun isLeaf() = children.isEmpty()
 }

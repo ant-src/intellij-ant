@@ -27,7 +27,7 @@ import org.eclipse.lsp4j.services.LanguageServer
 
 /**
  * How the IDE runs and talks to `ant lsp`: the command line, which files it serves, the prelude
- * document `ant:/prelude.ant` (lsp.md section 4, Definition), and what the IDE lets the server
+ * document `ant:/prelude.d.ant` (lsp.md section 4, Definition), and what the IDE lets the server
  * do on top of the defaults: format a file although the plugin has an indentation model of its
  * own, and color its semantic tokens.
  */
@@ -41,7 +41,7 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         val ant = AntExecutable.find()
         if (ant == null) {
             notifyNotFound(project)
-            throw ExecutionException("The ant executable was not found. Set its path in Settings | Languages & Frameworks | Ant.")
+            throw ExecutionException(AntExecutable.NOT_FOUND)
         }
         return commandLine(ant.toString(), project)
     }
@@ -85,7 +85,10 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         override val completionCustomizer: LspCompletionCustomizer = AntCompletionSupport()
     }
 
+    /** Once per project, until the settings change: the server is started again for every file opened. */
     private fun notifyNotFound(project: Project) {
+        if (project.getUserData(NOTIFIED) == true) return
+        project.putUserData(NOTIFIED, true)
         NotificationGroupManager.getInstance().getNotificationGroup("Ant")
             .createNotification(
                 "Ant executable not found",
@@ -100,6 +103,8 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
 
     companion object {
         private val LOG = logger<AntLspServerDescriptor>()
+        /** Whether the project was told that ant is missing. */
+        val NOTIFIED = com.intellij.openapi.util.Key.create<Boolean>("ant.executable.notified")
         private const val REQUEST_TIMEOUT_MS = 10_000
 
         /** `ant lsp` in the project's directory, when there is one on disk (a test project may have none). */

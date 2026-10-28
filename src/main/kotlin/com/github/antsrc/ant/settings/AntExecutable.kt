@@ -11,29 +11,36 @@ import java.nio.file.Path
 /**
  * Finds the `ant` executable: the one the settings name, then `ant` on PATH, then in `$GOBIN`,
  * then in the `bin` directory of `go env GOPATH`, then in `~/go/bin`. A hit is kept until the
- * setting changes; a miss is not, so that an `ant` installed later is found. A script named
- * `ant`, such as Apache Ant's launcher, is passed over: the Ant command is a compiled program.
+ * setting changes; a miss only briefly, so that the search, which runs `go env`, is not repeated
+ * for every file opened, while an `ant` installed later is still found. A script named `ant`,
+ * such as Apache Ant's launcher, is passed over: the Ant command is a compiled program.
  */
 object AntExecutable {
     @Volatile private var cached: Path? = null
+    @Volatile private var missedAt = 0L
 
     fun find(): Path? {
         cached?.let { return it }
+        if (System.currentTimeMillis() - missedAt < MISS_TTL_MS) return null
         val found = locate()
         cached = found
+        if (found == null) missedAt = System.currentTimeMillis()
         return found
     }
 
     fun forget() {
         cached = null
+        missedAt = 0L
     }
 
-    /** The command to run, for messages and command lines: the executable found, or plain `ant`. */
-    fun command(): String = find()?.toString() ?: "ant"
+    /** What to tell a user who has no `ant`. */
+    const val NOT_FOUND = "The ant executable was not found. Set its path in Settings | Languages & Frameworks | Ant, or install it with: go install github.com/ant-src/ant/cmd/ant@latest"
+    private const val MISS_TTL_MS = 30_000L
 
     private fun locate(): Path? {
         val configured = AntSettings.getInstance().antPath
-        if (configured.isNotBlank()) return Path.of(configured)
+        // The setting is taken as it is, script or not, as long as the file exists.
+        if (configured.isNotBlank()) return Path.of(configured).takeIf { Files.isRegularFile(it) }
         val exe = if (SystemInfo.isWindows) "ant.exe" else "ant"
         PathEnvironmentVariableUtil.findAllExeFilesInPath(exe).map { it.toPath() }.firstOrNull { isAnt(it) }?.let { return it }
         System.getenv("GOBIN")?.takeIf { it.isNotBlank() }?.let { Path.of(it, exe) }?.takeIf { isAnt(it) }?.let { return it }

@@ -62,8 +62,10 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     override fun suggestedName(): String? = file.takeIf { it.isNotBlank() }?.let { File(it).name }
 
     /** The command line as it will run, for the state and for tests. */
+    @Throws(ExecutionException::class)
     fun commandLine(): GeneralCommandLine {
-        val cmd = GeneralCommandLine(AntExecutable.command(), "run", file)
+        val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
+        val cmd = GeneralCommandLine(ant.toString(), "run", file)
         cmd.addParameters(ParametersListUtil.parse(arguments))
         val dir = workingDirectory.ifBlank { File(file).parent ?: project.basePath }
         cmd.withWorkDirectory(dir)

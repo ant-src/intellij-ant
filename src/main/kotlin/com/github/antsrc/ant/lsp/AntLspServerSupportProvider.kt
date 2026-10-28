@@ -25,6 +25,7 @@ class AntLspServerSupportProvider : LspServerSupportProvider {
         /** Restarts the server of every open project, after the executable changed. */
         fun restartAll() {
             for (project in com.intellij.openapi.project.ProjectManager.getInstance().openProjects) {
+                project.putUserData(AntLspServerDescriptor.NOTIFIED, null)
                 LspServerManager.getInstance(project).stopAndRestartIfNeeded(AntLspServerSupportProvider::class.java)
             }
         }

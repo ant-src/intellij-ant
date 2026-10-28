@@ -15,7 +15,6 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.search.GlobalSearchScope
 import com.github.antsrc.ant.settings.AntExecutable
 import com.github.antsrc.ant.settings.AntSettings
-import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.impl.NonBlockingReadActionImpl
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -90,11 +89,10 @@ class AntLspTest : BasePlatformTestCase() {
             manager.getServersForProvider(AntLspServerSupportProvider::class.java).any { it.state == LspServerState.Running }
         }
 
-        var infos: List<HighlightInfo> = emptyList()
-        waitFor("a diagnostic on the bad assignment") {
-            infos = myFixture.doHighlighting()
-            infos.any { it.severity == HighlightSeverity.ERROR && it.text == "\"text\"" }
-        }
+        // The IDE restarts highlighting when diagnostics arrive, so one pass runs after they did.
+        waitFor("diagnostics for main.ant") { events.contains("diagnostics main.ant") }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        val infos = myFixture.doHighlighting()
         val errors = infos.filter { it.severity == HighlightSeverity.ERROR }.map { "${it.text}: ${it.description}" }
         assertTrue(errors.toString(), errors.any { it.startsWith("\"text\": cannot use string where int is expected") })
         assertTrue(errors.toString(), errors.any { it == "Str: Str is not defined" })
