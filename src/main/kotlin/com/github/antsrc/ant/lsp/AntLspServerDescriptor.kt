@@ -59,7 +59,9 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
                     .getServersForProvider(AntLspServerSupportProvider::class.java)
                     .firstOrNull { it.descriptor === this@AntLspServerDescriptor } ?: return@executeOnPooledThread
                 try {
-                    val text = server.sendRequestSync { (it as AntLanguageServer).source(SourceParams(AntPrelude.URI)) }
+                    // The timeout is given, since the call with the default one is bound to a
+                    // static helper that moved between IDE versions (2026.1.4 renamed the API).
+                    val text = server.sendRequestSync(REQUEST_TIMEOUT_MS) { (it as AntLanguageServer).source(SourceParams(AntPrelude.URI)) }
                     if (text != null) AntPrelude.getInstance(project).update(text)
                 } catch (e: Exception) {
                     LOG.info("ant/source failed: $e")
@@ -92,6 +94,7 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
 
     companion object {
         private val LOG = logger<AntLspServerDescriptor>()
+        private const val REQUEST_TIMEOUT_MS = 10_000
 
         fun commandLine(ant: String, project: Project): GeneralCommandLine =
             GeneralCommandLine(ant, "lsp").withWorkDirectory(project.basePath).withParentEnvironmentType(GeneralCommandLine.ParentEnvironmentType.CONSOLE)
