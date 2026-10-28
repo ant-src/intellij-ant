@@ -63,7 +63,7 @@ intellijPlatform {
             untilBuild = provider { null }
         }
         vendor {
-            name = "ant-src"
+            name = "ant-lang"
             url = "https://github.com/ant-src"
         }
     }

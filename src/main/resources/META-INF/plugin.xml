@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.github.antsrc.ant</id>
     <name>Ant</name>
-    <vendor url="https://github.com/ant-src">ant-src</vendor>
+    <vendor url="https://github.com/ant-src">ant-lang</vendor>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.redhat.devtools.lsp4ij</depends>
