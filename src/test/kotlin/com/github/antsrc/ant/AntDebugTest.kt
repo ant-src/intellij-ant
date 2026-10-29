@@ -57,13 +57,16 @@ class AntDebugTest : BasePlatformTestCase() {
     }
 
     fun testFieldPathAt() {
-        val text = "println(user.address.city + f(x))"
+        val text = "println(user.address.city + f(x) + xs[0].name + g(y).size + a..b)"
         fun at(word: String) = fieldPathAt(text, text.indexOf(word))?.let { text.substring(it.startOffset, it.endOffset) }
         assertEquals("user.address.city", at("city"))
         assertEquals("user.address", at("address"))
         assertEquals("user", at("user"))
         assertEquals("x", at("x)"))
         assertNull(at("("))
+        assertNull("a field of an element is not the name alone", at("name"))
+        assertNull("a field of a call's result is not the name alone", at("size"))
+        assertEquals("the end of a range is a name", "b", at("b)"))
     }
 
     fun testBreakpointStackAndVariables() {

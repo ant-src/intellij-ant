@@ -422,7 +422,12 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     }
 }
 
-/** The name or field path, such as `user.address.city`, that ends with the name at offset. */
+/**
+ * The name or field path, such as `user.address.city`, that ends with the name at offset. A name
+ * after a dot belongs to what is before the dot, so when that is not a name, as `name` in
+ * `xs[0].name` or `f(x).name`, there is nothing hover can show: the name alone would be another
+ * variable.
+ */
 fun fieldPathAt(text: CharSequence, offset: Int): TextRange? {
     fun ident(c: Char) = c == '_' || c.isLetterOrDigit()
     if (offset >= text.length || !ident(text[offset])) return null
@@ -434,6 +439,7 @@ fun fieldPathAt(text: CharSequence, offset: Int): TextRange? {
         if (start >= 2 && text[start - 1] == '.' && ident(text[start - 2])) start -= 1 else break
     }
     if (text[start].isDigit()) return null
+    if (start > 0 && text[start - 1] == '.' && !(start > 1 && text[start - 2] == '.')) return null
     return TextRange(start, end)
 }
 
