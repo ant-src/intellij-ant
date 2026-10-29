@@ -2,8 +2,9 @@
 
 <!-- plugin description -->
 Support for the [Ant](https://github.com/ant-src/ant) programming language: highlighting, run
-configurations, and the language features of `ant lsp` through the IDE's own LSP client, including
-diagnostics, completion, hover, go to definition, references, and formatting.
+configurations, debugging through `ant dap`, and the language features of `ant lsp` through the
+IDE's own LSP client, including diagnostics, completion, hover, go to definition, references, and
+formatting.
 <!-- plugin description end -->
 
 Needs IntelliJ IDEA 2025.3 or later (not the open-source builds or Android Studio, which lack the
@@ -24,10 +25,15 @@ names another one.
 
 Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file.
 
+## Debug
+
+Debug an Ant run configuration to run it under `ant dap`: line breakpoints, stepping, pause, every
+goroutine's stack and variables, and a stop at a panic that nothing catches.
+
 ## Development
 
 ```sh
-./gradlew test          # lexer, editing, run configuration, and language server tests; needs ../ant or ANT_PATH
+./gradlew test          # lexer, editing, run configuration, debugger, and language server tests; needs ../ant or ANT_PATH
 ./gradlew runIde        # an IDE with the plugin
 ./gradlew buildPlugin   # build/distributions/intellij-ant-<version>.zip
 ./gradlew verifyPlugin  # compatibility with the IDEs in build.gradle.kts

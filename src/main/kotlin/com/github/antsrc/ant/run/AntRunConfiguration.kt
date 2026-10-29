@@ -67,11 +67,27 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
         val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
         val cmd = GeneralCommandLine(ant.toString(), "run", file)
         cmd.addParameters(ParametersListUtil.parse(arguments))
-        val dir = workingDirectory.ifBlank { File(file).parent ?: project.basePath }
-        cmd.withWorkDirectory(dir)
+        cmd.withWorkDirectory(workingDirectory())
         environment.configureCommandLine(cmd, true)
         return cmd
     }
+
+    /** The command line of `ant dap`, which debugs the configuration (spec/dap.md). */
+    @Throws(ExecutionException::class)
+    fun debugCommandLine(): GeneralCommandLine {
+        val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
+        return GeneralCommandLine(ant.toString(), "dap").withWorkDirectory(workingDirectory())
+    }
+
+    /** The attributes of ant dap's launch request (spec/dap.md section 2). */
+    fun launchAttributes(): Map<String, Any> = mapOf(
+        "program" to file,
+        "args" to ParametersListUtil.parse(arguments),
+        "cwd" to workingDirectory(),
+        "env" to environment.envs,
+    )
+
+    private fun workingDirectory(): String = workingDirectory.ifBlank { File(file).parent ?: project.basePath ?: "." }
 
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState {
         return object : CommandLineState(environment) {
