@@ -1,6 +1,5 @@
 package com.github.antsrc.ant.debug
 
-import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.intellij.execution.KillableProcess
 import com.intellij.execution.process.ProcessHandler

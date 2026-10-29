@@ -2,7 +2,6 @@ package com.github.antsrc.ant
 
 import com.github.antsrc.ant.debug.AntDapConnection
 import com.github.antsrc.ant.debug.AntPanicBreakpointType
-import com.github.antsrc.ant.debug.AntPanicProperties
 import com.github.antsrc.ant.debug.fieldPathAt
 import com.github.antsrc.ant.debug.panicFilters
 import com.github.antsrc.ant.debug.sourceBreakpoint
