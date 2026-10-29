@@ -1,6 +1,8 @@
 package com.github.antsrc.ant
 
 import com.github.antsrc.ant.debug.AntDapConnection
+import com.github.antsrc.ant.debug.AntPanicBreakpointType
+import com.github.antsrc.ant.debug.AntPanicProperties
 import com.github.antsrc.ant.debug.fieldPathAt
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.github.antsrc.ant.run.AntRunConfigurationType
@@ -14,6 +16,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XDebuggerManagerListener
 import com.intellij.execution.configurations.ConfigurationTypeUtil
 import com.intellij.execution.configurations.GeneralCommandLine
@@ -154,5 +157,53 @@ class AntDebugTest : BasePlatformTestCase() {
         assertTrue(text, text.contains("hello from debug"))
         assertTrue(text, text.contains("Process finished with exit code 0"))
         Disposer.dispose(console)
+    }
+
+    fun testPanicBreakpointStopsTheSession() {
+        val ant = System.getenv("ANT_PATH")?.takeIf { File(it).canExecute() } ?: return // no ant to run
+        AntSettings.getInstance().antPath = ant
+        AntExecutable.forget()
+        val dir = Files.createTempDirectory("ant-panic").toFile()
+        val main = File(dir, "main.ant").apply { writeText("var xs = [1]\nprintln(xs[5])\n") }
+        val manager = XDebuggerManager.getInstance(project).breakpointManager
+        val type = XDebuggerUtil.getInstance().findBreakpointType(AntPanicBreakpointType::class.java)
+        manager.getBreakpoints(type).forEach { com.intellij.openapi.application.runWriteAction { manager.removeBreakpoint(it) } }
+        val bp = com.intellij.openapi.application.runWriteAction { manager.addBreakpoint(type, AntPanicProperties()) }
+        try {
+            val session = startDebugging(main)
+            waitFor("a stop at the panic") { session.isSuspended }
+            assertEquals(2, session.currentPosition?.line?.plus(1))
+            session.stop()
+            waitFor("the end of the session") { session.debugProcess.processHandler.isProcessTerminated }
+            Disposer.dispose(session.consoleView)
+        } finally {
+            com.intellij.openapi.application.runWriteAction { manager.removeBreakpoint(bp) }
+        }
+    }
+
+    private fun startDebugging(file: File): XDebugSession {
+        val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
+        val settings = RunManager.getInstance(project).createConfiguration(file.name, type.factory)
+        (settings.configuration as AntRunConfiguration).file = file.path
+        val environment = ExecutionEnvironmentBuilder.create(DefaultDebugExecutor.getDebugExecutorInstance(), settings).build()
+        var session: XDebugSession? = null
+        val connection = project.messageBus.connect(testRootDisposable)
+        connection.subscribe(XDebuggerManager.TOPIC, object : XDebuggerManagerListener {
+            override fun processStarted(debugProcess: com.intellij.xdebugger.XDebugProcess) {
+                session = debugProcess.session
+            }
+        })
+        environment.runner.execute(environment)
+        waitFor("the session") { session != null }
+        return session!!
+    }
+
+    private fun waitFor(what: String, done: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 20_000
+        while (!done()) {
+            if (System.currentTimeMillis() > deadline) fail("timed out waiting for $what")
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
     }
 }

@@ -22,6 +22,7 @@ import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XExpression
 import com.intellij.xdebugger.XSourcePosition
+import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XBreakpointHandler
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.evaluation.EvaluationMode
@@ -35,6 +36,7 @@ import com.intellij.xdebugger.frame.XSuspendContext
 import com.intellij.xdebugger.frame.XValueChildrenList
 import com.intellij.xdebugger.frame.XValueGroup
 import com.intellij.xdebugger.frame.XValueNode
+import com.intellij.xdebugger.frame.XValueModifier
 import com.intellij.xdebugger.frame.XValuePlace
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments
 import org.eclipse.lsp4j.debug.ContinueArguments
@@ -45,6 +47,7 @@ import org.eclipse.lsp4j.debug.PauseArguments
 import org.eclipse.lsp4j.debug.ScopesArguments
 import org.eclipse.lsp4j.debug.SetBreakpointsArguments
 import org.eclipse.lsp4j.debug.SetExceptionBreakpointsArguments
+import org.eclipse.lsp4j.debug.SetVariableArguments
 import org.eclipse.lsp4j.debug.Source
 import org.eclipse.lsp4j.debug.SourceBreakpoint
 import org.eclipse.lsp4j.debug.StackTraceArguments
@@ -84,7 +87,31 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }
     }
 
-    override fun getBreakpointHandlers(): Array<XBreakpointHandler<*>> = arrayOf(breakpointHandler)
+    /** The panic breakpoints, which together say which panic filters ant dap gets. */
+    private val panicBreakpoints = ConcurrentHashMap.newKeySet<XBreakpoint<AntPanicProperties>>()
+
+    private val panicHandler = object : XBreakpointHandler<XBreakpoint<AntPanicProperties>>(AntPanicBreakpointType::class.java) {
+        override fun registerBreakpoint(breakpoint: XBreakpoint<AntPanicProperties>) {
+            panicBreakpoints.add(breakpoint)
+            if (launched) background { sendPanicFilters() }
+        }
+
+        override fun unregisterBreakpoint(breakpoint: XBreakpoint<AntPanicProperties>, temporary: Boolean) {
+            panicBreakpoints.remove(breakpoint)
+            if (launched) background { sendPanicFilters() }
+        }
+    }
+
+    override fun getBreakpointHandlers(): Array<XBreakpointHandler<*>> = arrayOf(breakpointHandler, panicHandler)
+
+    /** Sends the panic filters the enabled panic breakpoints ask for (spec/dap.md section 5). */
+    private fun sendPanicFilters() {
+        val filters = buildList {
+            if (panicBreakpoints.isNotEmpty()) add("uncaught")
+            if (panicBreakpoints.any { it.properties.caught }) add("all")
+        }
+        server.setExceptionBreakpoints(SetExceptionBreakpointsArguments().apply { this.filters = filters.toTypedArray() }).get(TIMEOUT, TimeUnit.SECONDS)
+    }
     override fun getEditorsProvider(): XDebuggerEditorsProvider = EditorsProvider
     override fun doGetProcessHandler(): ProcessHandler = handler
 
@@ -119,7 +146,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         override fun initialized() = background {
             launched = true
             for (path in breakpoints.keys) sendBreakpoints(path)
-            server.setExceptionBreakpoints(SetExceptionBreakpointsArguments().apply { filters = arrayOf("uncaught") }).get(TIMEOUT, TimeUnit.SECONDS)
+            sendPanicFilters()
             server.configurationDone(ConfigurationDoneArguments()).get(TIMEOUT, TimeUnit.SECONDS)
         }
 
@@ -285,7 +312,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             val list = XValueChildrenList()
             for (scope in scopes) {
                 if (scope.name == "Locals") {
-                    variables(scope.variablesReference, 0, 0).forEach { list.add(AntValue(it)) }
+                    variables(scope.variablesReference, 0, 0).forEach { list.add(AntValue(it, scope.variablesReference)) }
                 } else {
                     list.addBottomGroup(AntScope(scope.name, scope.variablesReference))
                 }
@@ -306,7 +333,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     private inner class AntScope(name: String, private val ref: Int) : XValueGroup(name) {
         override fun computeChildren(node: XCompositeNode): Unit = background {
             val list = XValueChildrenList()
-            variables(ref, 0, 0).forEach { list.add(AntValue(it)) }
+            variables(ref, 0, 0).forEach { list.add(AntValue(it, ref)) }
             node.addChildren(list, true)
         }
     }
@@ -327,7 +354,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                     variablesReference = r.variablesReference
                     indexedVariables = r.indexedVariables
                     namedVariables = r.namedVariables
-                }))
+                }, 0))
             } catch (e: Exception) {
                 callback.errorOccurred(((e.cause ?: e).message ?: e.toString()).removePrefix("org.eclipse.lsp4j.jsonrpc.ResponseErrorException: "))
             }
@@ -338,7 +365,27 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             fieldPathAt(document.charsSequence, offset)
     }
 
-    private inner class AntValue(private val v: Variable) : XNamedValue(v.name) {
+    /** A variable, in the container its parent reference names, or 0 for an evaluation's result. */
+    private inner class AntValue(private val v: Variable, private val parent: Int) : XNamedValue(v.name) {
+        /** Set Value evaluates the text in the frame and gives the variable that value (spec/dap.md section 6). */
+        override fun getModifier(): XValueModifier? {
+            if (parent == 0 || v.presentationHint?.attributes?.contains("readOnly") == true) return null
+            return object : XValueModifier() {
+                override fun setValue(expression: XExpression, callback: XModificationCallback) = background {
+                    try {
+                        server.setVariable(SetVariableArguments().apply {
+                            variablesReference = parent
+                            name = v.name
+                            value = expression.expression
+                        }).get(TIMEOUT, TimeUnit.SECONDS)
+                        callback.valueModified()
+                    } catch (e: Exception) {
+                        callback.errorOccurred(((e.cause ?: e).message ?: e.toString()))
+                    }
+                }
+            }
+        }
+
         private var loaded = 0 // indexed children shown so far
 
         override fun computePresentation(node: XValueNode, place: XValuePlace) {
@@ -350,13 +397,13 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             val list = XValueChildrenList()
             if (indexed > 0) {
                 val page = variables(v.variablesReference, loaded, PAGE)
-                page.forEach { list.add(AntValue(it)) }
+                page.forEach { list.add(AntValue(it, v.variablesReference)) }
                 loaded += page.size
                 val remaining = indexed - loaded
                 node.addChildren(list, remaining <= 0)
                 if (remaining > 0) node.tooManyChildren(remaining) { computeChildren(node) }
             } else {
-                variables(v.variablesReference, 0, 0).forEach { list.add(AntValue(it)) }
+                variables(v.variablesReference, 0, 0).forEach { list.add(AntValue(it, v.variablesReference)) }
                 node.addChildren(list, true)
             }
         }
