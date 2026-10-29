@@ -4,6 +4,17 @@ import com.github.antsrc.ant.debug.AntDapConnection
 import com.github.antsrc.ant.debug.fieldPathAt
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.github.antsrc.ant.run.AntRunConfigurationType
+import com.github.antsrc.ant.settings.AntExecutable
+import com.github.antsrc.ant.settings.AntSettings
+import com.intellij.execution.RunManager
+import com.intellij.execution.executors.DefaultDebugExecutor
+import com.intellij.execution.impl.ConsoleViewImpl
+import com.intellij.execution.runners.ExecutionEnvironmentBuilder
+import com.intellij.openapi.util.Disposer
+import com.intellij.testFramework.PlatformTestUtil
+import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XDebuggerManagerListener
 import com.intellij.execution.configurations.ConfigurationTypeUtil
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -106,5 +117,42 @@ class AntDebugTest : BasePlatformTestCase() {
         } finally {
             connection.close()
         }
+    }
+
+    fun testDebugSessionPrintsToConsole() {
+        val ant = System.getenv("ANT_PATH")?.takeIf { File(it).canExecute() } ?: return // no ant to run
+        AntSettings.getInstance().antPath = ant
+        AntExecutable.forget()
+        val dir = Files.createTempDirectory("ant-console").toFile()
+        val main = File(dir, "main.ant").apply { writeText("println(\"hello from debug\")\n") }
+        val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
+        val settings = RunManager.getInstance(project).createConfiguration("main", type.factory)
+        (settings.configuration as AntRunConfiguration).file = main.path
+        val environment = ExecutionEnvironmentBuilder.create(DefaultDebugExecutor.getDebugExecutorInstance(), settings).build()
+        val started = CountDownLatch(1)
+        var session: XDebugSession? = null
+        project.messageBus.connect(testRootDisposable).subscribe(XDebuggerManager.TOPIC, object : XDebuggerManagerListener {
+            override fun processStarted(debugProcess: com.intellij.xdebugger.XDebugProcess) {
+                session = debugProcess.session
+                started.countDown()
+            }
+        })
+        environment.runner.execute(environment)
+        val deadline = System.currentTimeMillis() + 20_000
+        while (started.count > 0 && System.currentTimeMillis() < deadline) {
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
+        val console = session?.consoleView as? ConsoleViewImpl ?: error("no console")
+        val handler = session!!.debugProcess.processHandler
+        while (!handler.isProcessTerminated && System.currentTimeMillis() < deadline) {
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
+        console.flushDeferredText()
+        val text = console.editor?.document?.text ?: console.text
+        assertTrue(text, text.contains("hello from debug"))
+        assertTrue(text, text.contains("Process finished with exit code 0"))
+        Disposer.dispose(console)
     }
 }

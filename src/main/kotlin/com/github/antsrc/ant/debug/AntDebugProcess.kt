@@ -3,7 +3,10 @@ package com.github.antsrc.ant.debug
 import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.intellij.execution.process.ProcessHandler
-import com.intellij.execution.process.ProcessOutputTypes
+import com.intellij.execution.filters.RegexpFilter
+import com.intellij.execution.filters.TextConsoleBuilderFactory
+import com.intellij.execution.ui.ConsoleView
+import com.intellij.execution.ui.ExecutionConsole
 import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
@@ -54,6 +57,7 @@ import org.eclipse.lsp4j.debug.VariablesArguments
 import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import org.eclipse.lsp4j.debug.StackFrame as DapFrame
 
 /** A debug session of an Ant program, run by ant dap (spec/dap.md). */
@@ -84,6 +88,19 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     override fun getEditorsProvider(): XDebuggerEditorsProvider = EditorsProvider
     override fun doGetProcessHandler(): ProcessHandler = handler
 
+    /**
+     * The program's output goes straight into the console: the debugger shows the console this
+     * creates without attaching it to the process handler, whose text would go nowhere.
+     */
+    private val console: ConsoleView by lazy {
+        TextConsoleBuilderFactory.getInstance().createBuilder(session.project).console.also {
+            // ant prints path:line:col for an error, which opens the file at the position.
+            it.addMessageFilter(RegexpFilter(session.project, "${RegexpFilter.FILE_PATH_MACROS}:${RegexpFilter.LINE_MACROS}:${RegexpFilter.COLUMN_MACROS}"))
+        }
+    }
+
+    override fun createConsole(): ExecutionConsole = console
+
     override fun sessionInitialized() {
         handler.startNotify()
         background {
@@ -91,9 +108,9 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                 connection.launch(configuration.launchAttributes())
             } catch (e: Exception) {
                 val message = (e.cause ?: e).message ?: e.toString()
-                handler.notifyTextAvailable("$message\n", ProcessOutputTypes.STDERR)
+                console.print("$message\n", ConsoleViewContentType.ERROR_OUTPUT)
                 connection.close()
-                handler.finish(2)
+                finish(2)
             }
         }
     }
@@ -110,11 +127,11 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
         override fun output(category: String, text: String) {
             val type = when (category) {
-                "stdout" -> ProcessOutputTypes.STDOUT
-                "stderr" -> ProcessOutputTypes.STDERR
-                else -> ProcessOutputTypes.SYSTEM
+                "stdout" -> ConsoleViewContentType.NORMAL_OUTPUT
+                "stderr" -> ConsoleViewContentType.ERROR_OUTPUT
+                else -> ConsoleViewContentType.LOG_INFO_OUTPUT
             }
-            handler.notifyTextAvailable(text, type)
+            console.print(text, type)
         }
 
         override fun exited(code: Int) {
@@ -125,7 +142,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             background {
                 runCatching { server.disconnect(DisconnectArguments()).get(2, TimeUnit.SECONDS) }
                 connection.close()
-                handler.finish(exitCode)
+                finish(exitCode)
             }
         }
     }
@@ -165,7 +182,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         val active = stacks.firstOrNull { it.threadId == e.threadId } ?: stacks.firstOrNull() ?: return
         val context = AntSuspendContext(stacks, active)
         if (e.reason == "exception") {
-            session.consoleView?.print("${e.description ?: "panic"}\n", ConsoleViewContentType.ERROR_OUTPUT)
+            console.print("${e.description ?: "panic"}\n", ConsoleViewContentType.ERROR_OUTPUT)
         }
         val top = active.frames.firstOrNull()?.frame
         val hit = if (e.reason == "breakpoint" && top?.source?.path != null) {
@@ -211,7 +228,16 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     private fun disconnect(): Unit = background {
         runCatching { server.disconnect(DisconnectArguments()).get(2, TimeUnit.SECONDS) }
         connection.close()
-        handler.finish(exitCode)
+        finish(exitCode)
+    }
+
+    /** Ends the session's process, saying so in the console once. */
+    private val finished = AtomicBoolean()
+
+    private fun finish(code: Int) {
+        if (!finished.compareAndSet(false, true)) return
+        console.print("\nProcess finished with exit code $code\n", ConsoleViewContentType.SYSTEM_OUTPUT)
+        handler.finish(code)
     }
 
     private fun background(f: () -> Unit) {
