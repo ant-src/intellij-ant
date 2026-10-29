@@ -10,6 +10,7 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.ColoredTextContainer
 import com.intellij.ui.SimpleTextAttributes
@@ -22,6 +23,7 @@ import com.intellij.xdebugger.breakpoints.XBreakpointHandler
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.evaluation.EvaluationMode
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider
+import com.intellij.xdebugger.evaluation.XDebuggerEvaluator
 import com.intellij.xdebugger.frame.XCompositeNode
 import com.intellij.xdebugger.frame.XExecutionStack
 import com.intellij.xdebugger.frame.XNamedValue
@@ -34,6 +36,7 @@ import com.intellij.xdebugger.frame.XValuePlace
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments
 import org.eclipse.lsp4j.debug.ContinueArguments
 import org.eclipse.lsp4j.debug.DisconnectArguments
+import org.eclipse.lsp4j.debug.EvaluateArguments
 import org.eclipse.lsp4j.debug.NextArguments
 import org.eclipse.lsp4j.debug.PauseArguments
 import org.eclipse.lsp4j.debug.ScopesArguments
@@ -134,7 +137,14 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         val bps = breakpoints[path]?.toList() ?: emptyList()
         val response = server.setBreakpoints(SetBreakpointsArguments().apply {
             source = Source().apply { this.path = path }
-            breakpoints = bps.map { bp -> SourceBreakpoint().apply { line = bp.line + 1 } }.toTypedArray()
+            breakpoints = bps.map { bp ->
+                SourceBreakpoint().apply {
+                    line = bp.line + 1
+                    condition = bp.conditionExpression?.expression?.takeIf { it.isNotBlank() }
+                    // The IDE logs an expression's value; ant dap logs a message with {expr} parts.
+                    logMessage = bp.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { "{$it}" }
+                }
+            }.toTypedArray()
         }).get(TIMEOUT, TimeUnit.SECONDS)
         response.breakpoints.zip(bps).forEach { (result, bp) ->
             if (result.isVerified) {
@@ -236,6 +246,8 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
         override fun getSourcePosition() = position
 
+        override fun getEvaluator(): XDebuggerEvaluator = AntEvaluator(frame.id)
+
         override fun customizePresentation(component: ColoredTextContainer) {
             component.append(frame.name, SimpleTextAttributes.REGULAR_ATTRIBUTES)
             val file = frame.source?.path?.let { java.io.File(it).name } ?: return
@@ -273,6 +285,33 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }
     }
 
+    /** Evaluates in a frame through ant dap (spec/dap.md section 6). */
+    private inner class AntEvaluator(private val frameId: Int) : XDebuggerEvaluator() {
+        override fun evaluate(expression: String, callback: XEvaluationCallback, expressionPosition: XSourcePosition?) = background {
+            try {
+                val r = server.evaluate(EvaluateArguments().apply {
+                    this.expression = expression
+                    this.frameId = this@AntEvaluator.frameId
+                    context = "watch"
+                }).get(TIMEOUT, TimeUnit.SECONDS)
+                callback.evaluated(AntValue(Variable().apply {
+                    name = expression
+                    value = r.result
+                    type = r.type
+                    variablesReference = r.variablesReference
+                    indexedVariables = r.indexedVariables
+                    namedVariables = r.namedVariables
+                }))
+            } catch (e: Exception) {
+                callback.errorOccurred(((e.cause ?: e).message ?: e.toString()).removePrefix("org.eclipse.lsp4j.jsonrpc.ResponseErrorException: "))
+            }
+        }
+
+        /** Hover shows a name or a field path, never a call, as ant dap's hover does. */
+        override fun getExpressionRangeAtOffset(project: Project, document: Document, offset: Int, sideEffectsAllowed: Boolean): TextRange? =
+            fieldPathAt(document.charsSequence, offset)
+    }
+
     private inner class AntValue(private val v: Variable) : XNamedValue(v.name) {
         private var loaded = 0 // indexed children shown so far
 
@@ -308,6 +347,21 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         private const val TIMEOUT = AntDapConnection.TIMEOUT
         private const val PAGE = 100
     }
+}
+
+/** The name or field path, such as `user.address.city`, that ends with the name at offset. */
+fun fieldPathAt(text: CharSequence, offset: Int): TextRange? {
+    fun ident(c: Char) = c == '_' || c.isLetterOrDigit()
+    if (offset >= text.length || !ident(text[offset])) return null
+    var end = offset
+    while (end < text.length && ident(text[end])) end++
+    var start = offset
+    while (true) {
+        while (start > 0 && ident(text[start - 1])) start--
+        if (start >= 2 && text[start - 1] == '.' && ident(text[start - 2])) start -= 1 else break
+    }
+    if (text[start].isDigit()) return null
+    return TextRange(start, end)
 }
 
 /** The program as the IDE sees it: ant dap's output, and its end. */

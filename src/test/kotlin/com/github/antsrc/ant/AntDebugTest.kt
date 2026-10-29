@@ -1,6 +1,7 @@
 package com.github.antsrc.ant
 
 import com.github.antsrc.ant.debug.AntDapConnection
+import com.github.antsrc.ant.debug.fieldPathAt
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.github.antsrc.ant.run.AntRunConfigurationType
 import com.intellij.execution.configurations.ConfigurationTypeUtil
@@ -9,6 +10,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.eclipse.lsp4j.debug.ConfigurationDoneArguments
 import org.eclipse.lsp4j.debug.ContinueArguments
 import org.eclipse.lsp4j.debug.DisconnectArguments
+import org.eclipse.lsp4j.debug.EvaluateArguments
 import org.eclipse.lsp4j.debug.ScopesArguments
 import org.eclipse.lsp4j.debug.SetBreakpointsArguments
 import org.eclipse.lsp4j.debug.Source
@@ -33,6 +35,16 @@ class AntDebugTest : BasePlatformTestCase() {
         assertEquals("/tmp/dir/main.ant", attributes["program"])
         assertEquals(listOf("a", "b c"), attributes["args"])
         assertEquals("/tmp/dir", attributes["cwd"])
+    }
+
+    fun testFieldPathAt() {
+        val text = "println(user.address.city + f(x))"
+        fun at(word: String) = fieldPathAt(text, text.indexOf(word))?.let { text.substring(it.startOffset, it.endOffset) }
+        assertEquals("user.address.city", at("city"))
+        assertEquals("user.address", at("address"))
+        assertEquals("user", at("user"))
+        assertEquals("x", at("x)"))
+        assertNull(at("("))
     }
 
     fun testBreakpointStackAndVariables() {
@@ -80,6 +92,12 @@ class AntDebugTest : BasePlatformTestCase() {
             val locals = server.scopes(ScopesArguments().apply { frameId = frames[0].id }).get(10, TimeUnit.SECONDS).scopes[0]
             val vars = server.variables(VariablesArguments().apply { variablesReference = locals.variablesReference }).get(10, TimeUnit.SECONDS).variables
             assertEquals(listOf("name=\"ant\"", "text=\"hello, ant\""), vars.map { "${it.name}=${it.value}" })
+            val evaluated = server.evaluate(EvaluateArguments().apply {
+                expression = "text + \"!\""
+                frameId = frames[0].id
+                context = "watch"
+            }).get(10, TimeUnit.SECONDS)
+            assertEquals("\"hello, ant!\"", evaluated.result)
 
             server.continue_(ContinueArguments().apply { threadId = stop.threadId }).get(10, TimeUnit.SECONDS)
             assertTrue(ended.await(10, TimeUnit.SECONDS))

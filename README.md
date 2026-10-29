@@ -27,8 +27,9 @@ Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` w
 
 ## Debug
 
-Debug an Ant run configuration to run it under `ant dap`: line breakpoints, stepping, pause, every
-goroutine's stack and variables, and a stop at a panic that nothing catches.
+Debug an Ant run configuration to run it under `ant dap`: line breakpoints with conditions and
+logged expressions, stepping, pause, every goroutine's stack and variables, Evaluate Expression,
+watches, values on hover for names and fields, and a stop at a panic that nothing catches.
 
 ## Development
 
