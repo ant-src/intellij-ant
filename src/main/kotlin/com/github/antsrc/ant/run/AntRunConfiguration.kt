@@ -26,6 +26,7 @@ class AntRunConfigurationOptions : LocatableRunConfigurationOptions() {
     var file by string("")
     var arguments by string("")
     var workingDirectory by string("")
+    var stdinFile by string("")
     var environment by map<String, String>()
     var passParentEnvironment by property(true)
 }
@@ -45,6 +46,10 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     var workingDirectory: String
         get() = options.workingDirectory ?: ""
         set(value) { options.workingDirectory = value }
+    /** A file whose contents are the program's standard input, relative to the working directory; empty leaves it to the console under Run, and at end of file under the debugger (spec/dap.md section 2). */
+    var stdinFile: String
+        get() = options.stdinFile ?: ""
+        set(value) { options.stdinFile = value }
     var environment: EnvironmentVariablesData
         get() = EnvironmentVariablesData.create(options.environment, options.passParentEnvironment)
         set(value) {
@@ -57,6 +62,7 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     override fun checkConfiguration() {
         if (file.isBlank()) throw RuntimeConfigurationError("No Ant file to run")
         if (!File(file).isFile) throw RuntimeConfigurationError("The file does not exist: $file")
+        if (stdinFile.isNotBlank() && !stdin()!!.isFile) throw RuntimeConfigurationError("The standard input file does not exist: $stdinFile")
     }
 
     override fun suggestedName(): String? = file.takeIf { it.isNotBlank() }?.let { File(it).name }
@@ -68,26 +74,37 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
         val cmd = GeneralCommandLine(ant.toString(), "run", file)
         cmd.addParameters(ParametersListUtil.parse(arguments))
         cmd.withWorkDirectory(workingDirectory())
+        stdin()?.let { cmd.withInput(it) }
         environment.configureCommandLine(cmd, true)
         return cmd
     }
 
-    /** The command line of `ant dap`, which debugs the configuration (spec/dap.md). */
+    /**
+     * The command line of `ant dap`, which debugs the configuration (spec/dap.md). It gets the
+     * environment `ant run` would, since the program's is the adapter's own under the overrides
+     * the launch request carries.
+     */
     @Throws(ExecutionException::class)
     fun debugCommandLine(): GeneralCommandLine {
         val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
-        return GeneralCommandLine(ant.toString(), "dap").withWorkDirectory(workingDirectory())
+        val cmd = GeneralCommandLine(ant.toString(), "dap").withWorkDirectory(workingDirectory())
+        environment.configureCommandLine(cmd, true)
+        return cmd
     }
 
     /** The attributes of ant dap's launch request (spec/dap.md section 2). */
-    fun launchAttributes(): Map<String, Any> = mapOf(
-        "program" to file,
-        "args" to ParametersListUtil.parse(arguments),
-        "cwd" to workingDirectory(),
-        "env" to environment.envs,
-    )
+    fun launchAttributes(): Map<String, Any> = buildMap {
+        put("program", file)
+        put("args", ParametersListUtil.parse(arguments))
+        put("cwd", workingDirectory())
+        put("env", environment.envs)
+        stdin()?.let { put("stdin", it.path) }
+    }
 
     private fun workingDirectory(): String = workingDirectory.ifBlank { File(file).parent ?: project.basePath ?: "." }
+
+    /** The standard input file, resolved against the working directory, or null when there is none. */
+    private fun stdin(): File? = stdinFile.takeIf { it.isNotBlank() }?.let { File(it).takeIf { f -> f.isAbsolute } ?: File(workingDirectory(), it) }
 
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState {
         return object : CommandLineState(environment) {

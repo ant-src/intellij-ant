@@ -49,6 +49,11 @@ class AntDebugTest : BasePlatformTestCase() {
         assertEquals("/tmp/dir/main.ant", attributes["program"])
         assertEquals(listOf("a", "b c"), attributes["args"])
         assertEquals("/tmp/dir", attributes["cwd"])
+        assertFalse("no stdin attribute without a file", attributes.containsKey("stdin"))
+        configuration.stdinFile = "input.txt"
+        assertEquals("a relative file is resolved against the working directory", "/tmp/dir/input.txt", configuration.launchAttributes()["stdin"])
+        configuration.stdinFile = "/else/input.txt"
+        assertEquals("/else/input.txt", configuration.launchAttributes()["stdin"])
     }
 
     fun testFieldPathAt() {

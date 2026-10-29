@@ -42,6 +42,10 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         assertEquals("/tmp/dir", cmd.workDirectory.path)
         configuration.workingDirectory = "/tmp"
         assertEquals("/tmp", configuration.commandLine().workDirectory.path)
+        assertNull("the console is the input without a file", configuration.commandLine().inputFile)
+        configuration.stdinFile = "input.txt"
+        assertEquals("the input file is relative to the working directory", File("/tmp", "input.txt"), configuration.commandLine().inputFile)
+        configuration.stdinFile = ""
         assertEquals("main.ant", configuration.suggestedName())
         AntSettings.getInstance().antPath = File(Files.createTempDirectory("no-ant").toFile(), "ant").path
         AntExecutable.forget()
