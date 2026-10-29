@@ -11,9 +11,9 @@ import com.intellij.execution.ui.ConsoleViewContentType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.Document
-import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.ColoredTextContainer
 import com.intellij.ui.SimpleTextAttributes
@@ -22,10 +22,10 @@ import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XExpression
 import com.intellij.xdebugger.XSourcePosition
+import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XBreakpointHandler
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
-import com.intellij.xdebugger.evaluation.EvaluationMode
 import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider
 import com.intellij.xdebugger.evaluation.XDebuggerEvaluator
 import com.intellij.xdebugger.frame.XCompositeNode
@@ -57,9 +57,11 @@ import org.eclipse.lsp4j.debug.StoppedEventArguments
 import org.eclipse.lsp4j.debug.TerminateArguments
 import org.eclipse.lsp4j.debug.Variable
 import org.eclipse.lsp4j.debug.VariablesArguments
+import org.eclipse.lsp4j.jsonrpc.ResponseErrorException
 import java.io.OutputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import org.eclipse.lsp4j.debug.StackFrame as DapFrame
 
@@ -69,23 +71,29 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     private val connection = AntDapConnection(configuration.debugCommandLine(), Events())
     private val server get() = connection.server
 
-    /** The line breakpoints of each file, by path. */
+    /** The line breakpoints of each file, by its path with forward slashes, the form ant dap's paths are brought to as well. */
     private val breakpoints = ConcurrentHashMap<String, MutableSet<XLineBreakpoint<AntBreakpointProperties>>>()
+
+    /** The line ant dap bound each breakpoint to, which may be below the breakpoint's own line (spec/dap.md section 4). */
+    private val boundLines = ConcurrentHashMap<XLineBreakpoint<AntBreakpointProperties>, Int>()
     @Volatile private var launched = false
 
     private val breakpointHandler = object : XBreakpointHandler<XLineBreakpoint<AntBreakpointProperties>>(AntLineBreakpointType::class.java) {
         override fun registerBreakpoint(breakpoint: XLineBreakpoint<AntBreakpointProperties>) {
-            val path = breakpoint.sourcePosition?.file?.path ?: return
+            val path = pathOf(breakpoint) ?: return
             breakpoints.computeIfAbsent(path) { ConcurrentHashMap.newKeySet() }.add(breakpoint)
             if (launched) background { sendBreakpoints(path) }
         }
 
         override fun unregisterBreakpoint(breakpoint: XLineBreakpoint<AntBreakpointProperties>, temporary: Boolean) {
-            val path = breakpoint.sourcePosition?.file?.path ?: return
+            val path = pathOf(breakpoint) ?: return
             breakpoints[path]?.remove(breakpoint)
+            boundLines.remove(breakpoint)
             if (launched) background { sendBreakpoints(path) }
         }
     }
+
+    private fun pathOf(breakpoint: XLineBreakpoint<*>): String? = breakpoint.sourcePosition?.file?.path?.let(FileUtil::toSystemIndependentName)
 
     /** The panic breakpoints, which together say which panic filters ant dap gets. */
     private val panicBreakpoints = ConcurrentHashMap.newKeySet<XBreakpoint<AntPanicProperties>>()
@@ -106,13 +114,10 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
     /** Sends the panic filters the enabled panic breakpoints ask for (spec/dap.md section 5). */
     private fun sendPanicFilters() {
-        val filters = buildList {
-            if (panicBreakpoints.isNotEmpty()) add("uncaught")
-            if (panicBreakpoints.any { it.properties.caught }) add("all")
-        }
+        val filters = panicFilters(panicBreakpoints.map { it.properties.caught })
         server.setExceptionBreakpoints(SetExceptionBreakpointsArguments().apply { this.filters = filters.toTypedArray() }).get(TIMEOUT, TimeUnit.SECONDS)
     }
-    override fun getEditorsProvider(): XDebuggerEditorsProvider = EditorsProvider
+    override fun getEditorsProvider(): XDebuggerEditorsProvider = AntEditorsProvider
     override fun doGetProcessHandler(): ProcessHandler = handler
 
     /**
@@ -176,24 +181,19 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
     @Volatile private var exitCode = 0
 
-    /** Sends the breakpoints of one file, and shows which ant dap could not bind. */
+    /** Sends the breakpoints of one file, keeps the lines ant dap bound them to, and shows which it could not bind. */
     private fun sendBreakpoints(path: String) {
         val bps = breakpoints[path]?.toList() ?: emptyList()
         val response = server.setBreakpoints(SetBreakpointsArguments().apply {
             source = Source().apply { this.path = path }
-            breakpoints = bps.map { bp ->
-                SourceBreakpoint().apply {
-                    line = bp.line + 1
-                    condition = bp.conditionExpression?.expression?.takeIf { it.isNotBlank() }
-                    // The IDE logs an expression's value; ant dap logs a message with {expr} parts.
-                    logMessage = bp.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { "{$it}" }
-                }
-            }.toTypedArray()
+            breakpoints = bps.map { sourceBreakpoint(it.line, it.conditionExpression?.expression, it.logExpressionObject?.expression, it.suspendPolicy) }.toTypedArray()
         }).get(TIMEOUT, TimeUnit.SECONDS)
         response.breakpoints.zip(bps).forEach { (result, bp) ->
             if (result.isVerified) {
+                boundLines[bp] = result.line ?: bp.line + 1
                 session.setBreakpointVerified(bp)
             } else {
+                boundLines.remove(bp)
                 session.setBreakpointInvalid(bp, result.message)
             }
         }
@@ -213,13 +213,26 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }
         val top = active.frames.firstOrNull()?.frame
         val hit = if (e.reason == "breakpoint" && top?.source?.path != null) {
-            breakpoints[top.source.path]?.firstOrNull { it.line + 1 == top.line }
+            breakpoints[FileUtil.toSystemIndependentName(top.source.path)]?.firstOrNull { (boundLines[it] ?: it.line + 1) == top.line }
         } else null
         if (hit != null) {
-            if (!session.breakpointReached(hit, null, context)) resume(context)
+            // A breakpoint that suspends logs its expression here; one that does not logs it through ant dap (sourceBreakpoint).
+            val logged = hit.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { evaluateToText(it, top!!.id) }
+            if (!session.breakpointReached(hit, logged, context)) resume(context)
         } else {
             session.positionReached(context)
         }
+    }
+
+    /** An expression's value as text, or the error, for the console. */
+    private fun evaluateToText(expression: String, frameId: Int): String = try {
+        server.evaluate(EvaluateArguments().apply {
+            this.expression = expression
+            this.frameId = frameId
+            context = "watch"
+        }).get(TIMEOUT, TimeUnit.SECONDS).result
+    } catch (e: Exception) {
+        messageOf(e)
     }
 
     private fun threadOf(context: XSuspendContext?) = (context?.activeExecutionStack as? AntExecutionStack)?.threadId ?: 1
@@ -356,7 +369,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                     namedVariables = r.namedVariables
                 }, 0))
             } catch (e: Exception) {
-                callback.errorOccurred(((e.cause ?: e).message ?: e.toString()).removePrefix("org.eclipse.lsp4j.jsonrpc.ResponseErrorException: "))
+                callback.errorOccurred(messageOf(e))
             }
         }
 
@@ -380,7 +393,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                         }).get(TIMEOUT, TimeUnit.SECONDS)
                         callback.valueModified()
                     } catch (e: Exception) {
-                        callback.errorOccurred(((e.cause ?: e).message ?: e.toString()))
+                        callback.errorOccurred(messageOf(e))
                     }
                 }
             }
@@ -409,10 +422,12 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }
     }
 
-    private object EditorsProvider : XDebuggerEditorsProvider() {
-        override fun getFileType() = AntFileType
-        override fun createDocument(project: Project, expression: XExpression, sourcePosition: XSourcePosition?, mode: EvaluationMode): Document =
-            EditorFactory.getInstance().createDocument(expression.expression)
+    /** What to tell the user about a failed request: ant dap's own message, or why there was none. */
+    private fun messageOf(e: Throwable): String = when (e) {
+        is java.util.concurrent.ExecutionException -> e.cause?.let { messageOf(it) } ?: e.toString()
+        is ResponseErrorException -> e.responseError.message
+        is TimeoutException -> "ant dap did not answer within $TIMEOUT seconds"
+        else -> e.message ?: e.toString()
     }
 
     companion object {
@@ -441,6 +456,25 @@ fun fieldPathAt(text: CharSequence, offset: Int): TextRange? {
     if (text[start].isDigit()) return null
     if (start > 0 && text[start - 1] == '.' && !(start > 1 && text[start - 2] == '.')) return null
     return TextRange(start, end)
+}
+
+/**
+ * A breakpoint as ant dap takes it (spec/dap.md section 6). A breakpoint that does not suspend
+ * logs its expression through ant dap, as a logpoint, and the program goes on; one that suspends
+ * is sent without it, since a logpoint never stops, and the expression is evaluated when the
+ * breakpoint is reached. Braces inside the expression pair up, as ant dap counts them; one alone
+ * in a string literal is beyond the message's syntax, and ant dap says so.
+ */
+fun sourceBreakpoint(line: Int, condition: String?, logExpression: String?, suspendPolicy: SuspendPolicy): SourceBreakpoint = SourceBreakpoint().apply {
+    this.line = line + 1
+    this.condition = condition?.takeIf { it.isNotBlank() }
+    logMessage = logExpression?.takeIf { it.isNotBlank() && suspendPolicy == SuspendPolicy.NONE }?.let { "{$it}" }
+}
+
+/** The panic filters the enabled panic breakpoints ask for, by whether each stops at caught panics too (spec/dap.md section 5). */
+fun panicFilters(caught: Collection<Boolean>): List<String> = buildList {
+    if (caught.isNotEmpty()) add("uncaught")
+    if (caught.any { it }) add("all")
 }
 
 /** The program as the IDE sees it: ant dap's output, and its end. */

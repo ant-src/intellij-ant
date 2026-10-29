@@ -5,7 +5,9 @@ import com.intellij.openapi.fileTypes.FileTypeRegistry
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
+import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
+import com.intellij.xdebugger.evaluation.XDebuggerEditorsProvider
 
 /** A line breakpoint has no settings of its own. */
 class AntBreakpointProperties : XBreakpointProperties<AntBreakpointProperties>() {
@@ -19,6 +21,9 @@ class AntLineBreakpointType : XLineBreakpointType<AntBreakpointProperties>(ID, "
         FileTypeRegistry.getInstance().isFileOfType(file, AntFileType)
 
     override fun createBreakpointProperties(file: VirtualFile, line: Int) = AntBreakpointProperties()
+
+    /** The condition and the logged expression are Ant expressions (spec/dap.md section 6). */
+    override fun getEditorsProvider(breakpoint: XLineBreakpoint<AntBreakpointProperties>, project: Project): XDebuggerEditorsProvider = AntEditorsProvider
 
     companion object {
         const val ID = "ant-line"

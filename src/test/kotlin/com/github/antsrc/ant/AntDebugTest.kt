@@ -4,6 +4,9 @@ import com.github.antsrc.ant.debug.AntDapConnection
 import com.github.antsrc.ant.debug.AntPanicBreakpointType
 import com.github.antsrc.ant.debug.AntPanicProperties
 import com.github.antsrc.ant.debug.fieldPathAt
+import com.github.antsrc.ant.debug.panicFilters
+import com.github.antsrc.ant.debug.sourceBreakpoint
+import com.intellij.xdebugger.breakpoints.SuspendPolicy
 import com.github.antsrc.ant.run.AntRunConfiguration
 import com.github.antsrc.ant.run.AntRunConfigurationType
 import com.github.antsrc.ant.settings.AntExecutable
@@ -67,6 +70,23 @@ class AntDebugTest : BasePlatformTestCase() {
         assertNull("a field of an element is not the name alone", at("name"))
         assertNull("a field of a call's result is not the name alone", at("size"))
         assertEquals("the end of a range is a name", "b", at("b)"))
+    }
+
+    fun testSourceBreakpoint() {
+        val suspending = sourceBreakpoint(4, " ", "x", SuspendPolicy.ALL)
+        assertEquals(5, suspending.line)
+        assertNull("a blank condition is none", suspending.condition)
+        assertNull("a breakpoint that suspends is logged when it stops, not as a logpoint", suspending.logMessage)
+        val logpoint = sourceBreakpoint(4, "x > 1", "x", SuspendPolicy.NONE)
+        assertEquals("x > 1", logpoint.condition)
+        assertEquals("{x}", logpoint.logMessage)
+        assertNull(sourceBreakpoint(0, null, null, SuspendPolicy.NONE).logMessage)
+    }
+
+    fun testPanicFilters() {
+        assertEquals(emptyList<String>(), panicFilters(emptyList()))
+        assertEquals(listOf("uncaught"), panicFilters(listOf(false)))
+        assertEquals(listOf("uncaught", "all"), panicFilters(listOf(false, true)))
     }
 
     fun testBreakpointStackAndVariables() {
