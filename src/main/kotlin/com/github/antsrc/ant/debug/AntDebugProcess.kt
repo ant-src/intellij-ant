@@ -254,7 +254,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             component.append(" $file:${frame.line}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
 
-        override fun computeChildren(node: XCompositeNode) = background {
+        override fun computeChildren(node: XCompositeNode): Unit = background {
             val scopes = server.scopes(ScopesArguments().apply { frameId = frame.id }).get(TIMEOUT, TimeUnit.SECONDS).scopes
             val list = XValueChildrenList()
             for (scope in scopes) {
@@ -278,7 +278,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }).get(TIMEOUT, TimeUnit.SECONDS).variables.toList()
 
     private inner class AntScope(name: String, private val ref: Int) : XValueGroup(name) {
-        override fun computeChildren(node: XCompositeNode) = background {
+        override fun computeChildren(node: XCompositeNode): Unit = background {
             val list = XValueChildrenList()
             variables(ref, 0, 0).forEach { list.add(AntValue(it)) }
             node.addChildren(list, true)
@@ -319,7 +319,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
             node.setPresentation(null, v.type, v.value, v.variablesReference > 0)
         }
 
-        override fun computeChildren(node: XCompositeNode) = background {
+        override fun computeChildren(node: XCompositeNode): Unit = background {
             val indexed = v.indexedVariables ?: 0
             val list = XValueChildrenList()
             if (indexed > 0) {
@@ -328,7 +328,7 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                 loaded += page.size
                 val remaining = indexed - loaded
                 node.addChildren(list, remaining <= 0)
-                if (remaining > 0) node.tooManyChildren(remaining)
+                if (remaining > 0) node.tooManyChildren(remaining) { computeChildren(node) }
             } else {
                 variables(v.variablesReference, 0, 0).forEach { list.add(AntValue(it)) }
                 node.addChildren(list, true)
