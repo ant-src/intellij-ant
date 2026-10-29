@@ -8,6 +8,7 @@ import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.runners.GenericProgramRunner
 import com.intellij.execution.ui.RunContentDescriptor
+import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.xdebugger.XDebugProcess
 import com.intellij.xdebugger.XDebugProcessStarter
@@ -36,10 +37,12 @@ class AntDebugRunner : GenericProgramRunner<RunnerSettings>() {
     /**
      * Starts the session through XDebuggerManager.newSessionBuilder, where the IDE has it (2026.1
      * on), and returns its tab. XDebugSession.getRunContentDescriptor logs an error in the split
-     * debugger there, while 2025.3 has only startSession, so the builder is found reflectively.
+     * debugger there, while 2025.3 has only startSession, so the builder is found reflectively,
+     * on the API class rather than the IDE's implementation of it. An IDE whose builder has
+     * changed shape gets startSession, as 2025.3 does.
      */
     private fun startWithBuilder(manager: XDebuggerManager, starter: XDebugProcessStarter, environment: ExecutionEnvironment): RunContentDescriptor? {
-        val newBuilder = manager.javaClass.methods.firstOrNull { it.name == "newSessionBuilder" && it.parameterCount == 1 } ?: return null
+        val newBuilder = XDebuggerManager::class.java.methods.firstOrNull { it.name == "newSessionBuilder" && it.parameterCount == 1 } ?: return null
         try {
             val builderType = newBuilder.returnType
             var builder = newBuilder.invoke(manager, starter)
@@ -49,6 +52,13 @@ class AntDebugRunner : GenericProgramRunner<RunnerSettings>() {
             return start.returnType.getMethod("getRunContentDescriptor").invoke(result) as RunContentDescriptor
         } catch (e: InvocationTargetException) {
             throw e.targetException
+        } catch (e: ReflectiveOperationException) {
+            LOG.warn("XDebuggerManager.newSessionBuilder is not as expected; starting the session with startSession", e)
+            return null
         }
+    }
+
+    companion object {
+        private val LOG = logger<AntDebugRunner>()
     }
 }
