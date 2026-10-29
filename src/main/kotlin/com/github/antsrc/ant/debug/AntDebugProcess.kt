@@ -21,6 +21,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.xdebugger.XDebugProcess
 import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebugSessionListener
 import com.intellij.xdebugger.XDebuggerUtil
 import com.intellij.xdebugger.XExpression
 import com.intellij.xdebugger.XSourcePosition
@@ -44,6 +45,7 @@ import org.eclipse.lsp4j.debug.ConfigurationDoneArguments
 import org.eclipse.lsp4j.debug.ContinueArguments
 import org.eclipse.lsp4j.debug.DisconnectArguments
 import org.eclipse.lsp4j.debug.EvaluateArguments
+import org.eclipse.lsp4j.debug.ExceptionInfoArguments
 import org.eclipse.lsp4j.debug.NextArguments
 import org.eclipse.lsp4j.debug.PauseArguments
 import org.eclipse.lsp4j.debug.ScopesArguments
@@ -145,6 +147,11 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
     override fun sessionInitialized() {
         handler.startNotify()
+        session.addSessionListener(object : XDebugSessionListener {
+            override fun stackFrameChanged() {
+                (session.currentStackFrame as? AntStackFrame)?.let { selectedThread = it.threadId }
+            }
+        })
         send {
             try {
                 connection.launch(configuration.launchAttributes())
@@ -223,30 +230,48 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         }
     }
 
-    /** Builds the suspend context of a stop: every goroutine with its frames. */
+    /**
+     * Builds the suspend context of a stop: every goroutine, with the frames of the one that
+     * stopped. The others' frames are fetched when the IDE shows them, so that a program with
+     * many goroutines does not wait on every stop and step for as many requests.
+     */
     private fun suspend(e: StoppedEventArguments) {
         val threads = server.threads().await().threads
-        val stacks = threads.map { t ->
-            val frames = server.stackTrace(StackTraceArguments().apply { threadId = t.id }).await().stackFrames
-            AntExecutionStack(t.id, t.name, frames.map { AntStackFrame(it) })
-        }
-        val active = stacks.firstOrNull { it.threadId == e.threadId } ?: stacks.firstOrNull() ?: return
+        val stopping = e.threadId ?: threads.firstOrNull()?.id ?: return
+        val stacks = threads.map { t -> AntExecutionStack(t.id, t.name, if (t.id == stopping) framesOf(t.id, 0) else null) }
+        val active = stacks.firstOrNull { it.threadId == stopping } ?: stacks.firstOrNull() ?: return
+        selectedThread = active.threadId
         val context = AntSuspendContext(stacks, active)
-        if (e.reason == "exception") {
-            console.print("${e.description ?: "panic"}\n", ConsoleViewContentType.ERROR_OUTPUT)
-        }
-        val top = active.frames.firstOrNull()?.frame
-        val hit = if (e.reason == "breakpoint" && top?.source?.path != null) {
-            breakpoints[FileUtil.toSystemIndependentName(top.source.path)]?.firstOrNull { (boundLines[it] ?: it.line + 1) == top.line }
-        } else null
-        if (hit != null) {
-            // A breakpoint that suspends logs its expression here; one that does not logs it through ant dap (sourceBreakpoint).
-            val logged = hit.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { evaluateToText(it, top!!.id) }
-            if (!session.breakpointReached(hit, logged, context)) resume(context)
-        } else {
-            session.positionReached(context)
+        val top = active.topFrame?.frame
+        when (e.reason) {
+            "exception" -> {
+                // The console shows the panic's trace here, once; the runtime writes the panic itself only when it ends the program.
+                val info = runCatching { server.exceptionInfo(ExceptionInfoArguments().apply { threadId = active.threadId }).await() }.getOrNull()
+                console.print(info?.details?.stackTrace ?: "${info?.description ?: e.description ?: "panic"}\n", ConsoleViewContentType.ERROR_OUTPUT)
+                // The stop is the panic breakpoint's, with its own suspend and log settings.
+                val panic = panicBreakpoints.firstOrNull()
+                if (panic == null) session.positionReached(context) else if (!session.breakpointReached(panic, null, context)) resume(context)
+            }
+            "breakpoint" -> {
+                val hit = top?.source?.path?.let { breakpoints[FileUtil.toSystemIndependentName(it)] }?.firstOrNull { (boundLines[it] ?: it.line + 1) == top.line }
+                if (hit == null) {
+                    session.positionReached(context)
+                } else {
+                    // A breakpoint that suspends logs its expression here; one that does not logs it through ant dap (sourceBreakpoint).
+                    val logged = hit.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { evaluateToText(it, top.id) }
+                    if (!session.breakpointReached(hit, logged, context)) resume(context)
+                }
+            }
+            else -> session.positionReached(context)
         }
     }
+
+    /** A goroutine's frames from the given index on, innermost first (spec/dap.md section 3). */
+    private fun framesOf(threadId: Int, start: Int): List<AntStackFrame> =
+        server.stackTrace(StackTraceArguments().apply {
+            this.threadId = threadId
+            if (start > 0) startFrame = start
+        }).await().stackFrames.map { AntStackFrame(it, threadId) }
 
     /** An expression's value as text, or the error, for the console. */
     private fun evaluateToText(expression: String, frameId: Int): String = try {
@@ -259,7 +284,15 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         messageOf(e)
     }
 
-    private fun threadOf(context: XSuspendContext?) = (context?.activeExecutionStack as? AntExecutionStack)?.threadId ?: 1
+    /**
+     * The goroutine whose frame the user selected, which a step is for (spec/dap.md section 4).
+     * The IDE has let go of the selected frame by the time it asks for the step, so the frame is
+     * noted as it is selected; until the user picks one, it is the goroutine that stopped.
+     */
+    @Volatile private var selectedThread: Int? = null
+
+    private fun threadOf(context: XSuspendContext?): Int =
+        (session.currentStackFrame as? AntStackFrame)?.threadId ?: selectedThread ?: (context?.activeExecutionStack as? AntExecutionStack)?.threadId ?: 1
 
     override fun resume(context: XSuspendContext?) = send {
         server.continue_(ContinueArguments().apply { threadId = threadOf(context) }).await()
@@ -355,14 +388,25 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
         override fun getExecutionStacks(): Array<XExecutionStack> = stacks.toTypedArray()
     }
 
-    private inner class AntExecutionStack(val threadId: Int, name: String, val frames: List<AntStackFrame>) : XExecutionStack(name) {
-        override fun getTopFrame() = frames.firstOrNull()
+    /** A goroutine: the frames of the one that stopped are at hand, the others' are fetched when the IDE shows them. */
+    private inner class AntExecutionStack(val threadId: Int, name: String, private val frames: List<AntStackFrame>?) : XExecutionStack(name) {
+        override fun getTopFrame() = frames?.firstOrNull()
         override fun computeStackFrames(firstFrameIndex: Int, container: XStackFrameContainer) {
-            container.addStackFrames(frames.drop(firstFrameIndex), true)
+            if (frames != null) {
+                container.addStackFrames(frames.drop(firstFrameIndex), true)
+                return
+            }
+            background {
+                try {
+                    container.addStackFrames(framesOf(threadId, firstFrameIndex), true)
+                } catch (e: Exception) {
+                    container.errorOccurred(messageOf(e))
+                }
+            }
         }
     }
 
-    private inner class AntStackFrame(val frame: DapFrame) : XStackFrame() {
+    private inner class AntStackFrame(val frame: DapFrame, val threadId: Int) : XStackFrame() {
         private val position: XSourcePosition? by lazy {
             frame.source?.path?.let { LocalFileSystem.getInstance().findFileByPath(it) }
                 ?.let { XDebuggerUtil.getInstance().createPosition(it, frame.line - 1) }

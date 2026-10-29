@@ -23,14 +23,20 @@ names another one.
 
 ## Run
 
-Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file.
+Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file. The
+run configuration can name a file whose contents are the program's standard input; without one,
+the program reads the console under Run and sees end of file under the debugger.
 
 ## Debug
 
 Debug an Ant run configuration to run it under `ant dap`: line breakpoints with conditions and
 logged expressions, stepping, pause, every goroutine's stack and variables, Set Value, Evaluate
-Expression, watches, and values on hover for names and fields. **Ant Panics** in the Breakpoints
-dialog stops at a panic nothing catches, or with "Caught panics too" at every panic.
+Expression, watches, and values on hover for names and fields. A breakpoint that suspends logs its
+expression in the console when it stops; one set not to suspend logs it as the program runs on.
+**Ant Panics** in the Breakpoints dialog stops at a panic nothing catches, or with "Caught panics
+too" at every panic, and the console shows the panic's trace. Stop interrupts the program as Ctrl-C
+does under `ant run`, and ends the session when the program has not ended a few seconds later;
+Kill Process ends it at once.
 
 ## Development
 

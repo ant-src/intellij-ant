@@ -15,7 +15,12 @@ import com.intellij.execution.RunManager
 import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.impl.ConsoleViewImpl
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder
+import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
@@ -43,6 +48,21 @@ import java.util.concurrent.TimeUnit
 
 /** The debugger's side of ant dap, against the real executable that ANT_PATH names. */
 class AntDebugTest : BasePlatformTestCase() {
+    private var antPath = ""
+
+    override fun setUp() {
+        super.setUp()
+        antPath = AntSettings.getInstance().antPath
+    }
+
+    override fun tearDown() {
+        try {
+            AntSettings.getInstance().antPath = antPath
+        } finally {
+            super.tearDown()
+        }
+    }
+
     fun testLaunchAttributes() {
         val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
         val configuration = type.factory.createTemplateConfiguration(project) as AntRunConfiguration
@@ -183,6 +203,7 @@ class AntDebugTest : BasePlatformTestCase() {
         console.flushDeferredText()
         val text = console.editor?.document?.text ?: console.text
         assertTrue(text, text.contains("hello from debug"))
+        assertTrue(text, text.contains("Standard input is at end of file"))
         assertTrue(text, text.contains("Process finished with exit code 0"))
         Disposer.dispose(console)
     }
@@ -195,18 +216,49 @@ class AntDebugTest : BasePlatformTestCase() {
         val main = File(dir, "main.ant").apply { writeText("var xs = [1]\nprintln(xs[5])\n") }
         val manager = XDebuggerManager.getInstance(project).breakpointManager
         val type = XDebuggerUtil.getInstance().findBreakpointType(AntPanicBreakpointType::class.java)
-        manager.getBreakpoints(type).forEach { com.intellij.openapi.application.runWriteAction { manager.removeBreakpoint(it) } }
-        val bp = com.intellij.openapi.application.runWriteAction { manager.addBreakpoint(type, AntPanicProperties()) }
+        // The IDE makes the type's default breakpoint, which stops at a panic nothing catches, as ant dap's default does (spec/dap.md section 5).
+        val bp = manager.getBreakpoints(type).firstOrNull { manager.isDefaultBreakpoint(it) } ?: error("the default panic breakpoint")
+        val enabled = bp.isEnabled
+        val caught = bp.properties.caught
+        bp.isEnabled = true
+        bp.properties.caught = false
         try {
             val session = startDebugging(main)
             waitFor("a stop at the panic") { session.isSuspended }
             assertEquals(2, session.currentPosition?.line?.plus(1))
+            val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(main) ?: error("the file in the VFS")
+            waitFor("the editor at the panic") { editorsOf(file).isNotEmpty() }
+            val console = session.consoleView as ConsoleViewImpl
+            console.flushDeferredText()
+            val text = console.editor?.document?.text ?: console.text
+            assertTrue("the panic's trace is in the console: $text", text.contains("panic:") && text.contains("at "))
             session.stop()
             waitFor("the end of the session") { session.debugProcess.processHandler.isProcessTerminated }
             Disposer.dispose(session.consoleView)
         } finally {
-            com.intellij.openapi.application.runWriteAction { manager.removeBreakpoint(bp) }
+            bp.isEnabled = enabled
+            bp.properties.caught = caught
+            closeEditorsOf(main)
         }
+    }
+
+    /**
+     * The editors on file. The IDE navigates to a stop in a coroutine, and the test's editor
+     * manager neither lists the editor that opens as an open file nor closes it, so it is known
+     * by its document.
+     */
+    private fun editorsOf(file: VirtualFile): List<Editor> =
+        EditorFactory.getInstance().allEditors.filter { FileDocumentManager.getInstance().getFile(it.document) == file }
+
+    /** Releases the editors a stop opened on file, once a navigation still in flight has opened its own. */
+    private fun closeEditorsOf(file: File) {
+        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file) ?: return
+        val until = System.currentTimeMillis() + 500
+        while (System.currentTimeMillis() < until) {
+            PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+            Thread.sleep(20)
+        }
+        editorsOf(virtualFile).forEach { EditorFactory.getInstance().releaseEditor(it) }
     }
 
     private fun startDebugging(file: File): XDebugSession {
