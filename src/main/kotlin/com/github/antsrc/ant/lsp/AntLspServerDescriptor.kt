@@ -27,7 +27,7 @@ import org.eclipse.lsp4j.services.LanguageServer
 
 /**
  * How the IDE runs and talks to `ant lsp`: the command line, which files it serves, the prelude
- * document `ant:/prelude.d.ant` (lsp.md section 4, Definition), and what the IDE lets the server
+ * document `ant:/prelude.ant` (lsp.md section 4, Definition), and what the IDE lets the server
  * do on top of the defaults: format a file although the plugin has an indentation model of its
  * own, and color its semantic tokens.
  */
@@ -46,28 +46,41 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         return commandLine(ant.toString(), project)
     }
 
-    override fun getFileUri(file: VirtualFile): String =
-        if (AntPrelude.getInstance(project).isPrelude(file)) AntPrelude.URI else super.getFileUri(file)
+    override fun getFileUri(file: VirtualFile): String {
+        val prelude = AntPrelude.getInstance(project)
+        return if (prelude.isPrelude(file)) prelude.uri ?: AntPrelude.URIS.first() else super.getFileUri(file)
+    }
 
-    override fun findFileByUri(fileUri: String): VirtualFile? =
-        if (fileUri == AntPrelude.URI) AntPrelude.getInstance(project).virtualFile else super.findFileByUri(fileUri)
+    override fun findFileByUri(fileUri: String): VirtualFile? {
+        val prelude = AntPrelude.getInstance(project)
+        return if (prelude.isPreludeUri(fileUri)) prelude.virtualFile else super.findFileByUri(fileUri)
+    }
 
     override val lsp4jServerClass: Class<out LanguageServer> get() = AntLanguageServer::class.java
 
-    /** Fetches the prelude's text once the server runs, so that Go to Declaration can open it. */
+    /**
+     * Fetches the prelude's text once the server runs, so that Go to Declaration can open it: under
+     * each name the document has had, until the server answers.
+     */
     override val lspServerListener: LspServerListener = object : LspServerListener {
         override fun serverInitialized(params: InitializeResult) {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val server = LspServerManager.getInstance(project)
                     .getServersForProvider(AntLspServerSupportProvider::class.java)
                     .firstOrNull { it.descriptor === this@AntLspServerDescriptor } ?: return@executeOnPooledThread
-                try {
-                    // The timeout is given, since the call with the default one is bound to a
-                    // static helper that moved between IDE versions (2026.1.4 renamed the API).
-                    val text = server.sendRequestSync(REQUEST_TIMEOUT_MS) { (it as AntLanguageServer).source(SourceParams(AntPrelude.URI)) }
-                    if (text != null) AntPrelude.getInstance(project).update(text)
-                } catch (e: Exception) {
-                    LOG.info("ant/source failed: $e")
+                for (uri in AntPrelude.URIS) {
+                    val text = try {
+                        // The timeout is given, since the call with the default one is bound to a
+                        // static helper that moved between IDE versions (2026.1.4 renamed the API).
+                        server.sendRequestSync(REQUEST_TIMEOUT_MS) { (it as AntLanguageServer).source(SourceParams(uri)) }
+                    } catch (e: Exception) {
+                        LOG.info("ant/source $uri failed: $e")
+                        null
+                    }
+                    if (text != null) {
+                        AntPrelude.getInstance(project).update(uri, text)
+                        break
+                    }
                 }
             }
         }

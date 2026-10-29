@@ -97,5 +97,10 @@ tasks {
         dependsOn(buildAnt)
         environment("ANT_PATH", System.getenv("ANT_PATH")?.takeIf { it.isNotBlank() } ?: builtAnt.get().asFile.absolutePath)
         environment("ANT_REPO", System.getenv("ANT_REPO")?.takeIf { it.isNotBlank() } ?: antRepo.asFile.absolutePath)
+        // A failure's message and trace in the build output, so that CI logs say what failed.
+        testLogging {
+            events("failed")
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
     }
 }

@@ -171,6 +171,9 @@ class AntLspTest : BasePlatformTestCase() {
 
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!
+        val uri = AntPrelude.getInstance(project).uri
+        assertTrue("the prelude's URI: $uri", uri in AntPrelude.URIS)
+        assertEquals(uri!!.substringAfterLast('/'), prelude.name)
         assertFalse(prelude.isWritable)
         assertTrue(String(prelude.contentsToByteArray()).contains("func String."))
     }
