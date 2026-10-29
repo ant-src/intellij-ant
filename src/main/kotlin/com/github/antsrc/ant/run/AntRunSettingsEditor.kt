@@ -19,12 +19,16 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
     private val workingDirectory = TextFieldWithBrowseButton().apply {
         addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle("Working Directory"))
     }
+    private val stdinFile = TextFieldWithBrowseButton().apply {
+        addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileDescriptor().withTitle("Standard Input File"))
+    }
     private val environment = EnvironmentVariablesComponent()
 
     override fun resetEditorFrom(configuration: AntRunConfiguration) {
         file.text = configuration.file
         arguments.text = configuration.arguments
         workingDirectory.text = configuration.workingDirectory
+        stdinFile.text = configuration.stdinFile
         environment.envData = configuration.environment
     }
 
@@ -32,6 +36,7 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
         configuration.file = file.text.trim()
         configuration.arguments = arguments.text
         configuration.workingDirectory = workingDirectory.text.trim()
+        configuration.stdinFile = stdinFile.text.trim()
         configuration.environment = environment.envData
     }
 
@@ -39,6 +44,7 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
         .addLabeledComponent("Ant file:", file)
         .addLabeledComponent("Program arguments:", arguments)
         .addLabeledComponent("Working directory:", workingDirectory)
+        .addLabeledComponent("Standard input file:", stdinFile)
         .addComponent(environment)
         .panel
 }

@@ -29,6 +29,10 @@
         <configurationType implementation="com.github.antsrc.ant.run.AntRunConfigurationType"/>
         <runConfigurationProducer implementation="com.github.antsrc.ant.run.AntRunConfigurationProducer"/>
         <runLineMarkerContributor language="Ant" implementationClass="com.github.antsrc.ant.run.AntRunLineMarkerContributor"/>
+        <!-- Debugging through ant dap. -->
+        <programRunner implementation="com.github.antsrc.ant.debug.AntDebugRunner"/>
+        <xdebugger.breakpointType implementation="com.github.antsrc.ant.debug.AntLineBreakpointType"/>
+        <xdebugger.breakpointType implementation="com.github.antsrc.ant.debug.AntPanicBreakpointType"/>
 
         <applicationConfigurable parentId="language" id="com.github.antsrc.ant.settings" displayName="Ant"
                                  instance="com.github.antsrc.ant.settings.AntConfigurable"/>
