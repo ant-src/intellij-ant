@@ -4,9 +4,10 @@ import com.intellij.lexer.LexerBase
 import com.intellij.psi.tree.IElementType
 
 /**
- * Splits a string literal or a run of template text into its text and its escapes, so that the
- * highlighter colors a valid escape and marks an invalid one (section 2, Literals). The escapes
- * are `\n`, `\t`, `\r`, `\\`, `\"`, `` \` ``, `\$`, and `\u{...}` naming a Unicode scalar value.
+ * Splits a string, or the text of a string with interpolations, into its text and its escapes, so
+ * that the highlighter colors a valid escape and marks an invalid one (section 2, Literals). The
+ * escapes are `\n`, `\t`, `\r`, `\\`, `\"`, `\$`, and `\u{...}` naming a Unicode scalar value. A
+ * raw string has none and is not split.
  */
 class AntEscapeLexer(private val text: IElementType) : LexerBase() {
     private var buffer: CharSequence = ""
@@ -48,7 +49,7 @@ class AntEscapeLexer(private val text: IElementType) : LexerBase() {
             return
         }
         when (val c = buffer[tokenStart + 1]) {
-            'n', 't', 'r', '\\', '"', '`', '$' -> {
+            'n', 't', 'r', '\\', '"', '$' -> {
                 tokenEnd = tokenStart + 2
                 tokenType = AntTokenTypes.VALID_ESCAPE
             }

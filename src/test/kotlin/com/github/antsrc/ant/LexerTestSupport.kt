@@ -18,7 +18,7 @@ fun lex(src: String, escapes: Boolean = false): List<Tok> {
     val lexer: Lexer = if (escapes) {
         LayeredLexer(AntLexer()).apply {
             registerSelfStoppingLayer(AntEscapeLexer(AntTokenTypes.STRING), arrayOf(AntTokenTypes.STRING), IElementType.EMPTY_ARRAY)
-            registerSelfStoppingLayer(AntEscapeLexer(AntTokenTypes.TEMPLATE_TEXT), arrayOf(AntTokenTypes.TEMPLATE_TEXT), IElementType.EMPTY_ARRAY)
+            registerSelfStoppingLayer(AntEscapeLexer(AntTokenTypes.STRING_TEXT), arrayOf(AntTokenTypes.STRING_TEXT), IElementType.EMPTY_ARRAY)
         }
     } else {
         AntLexer()

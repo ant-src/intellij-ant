@@ -27,14 +27,18 @@ object AntTokenTypes {
 
     @JvmField val INT = AntTokenType("INT")
     @JvmField val FLOAT = AntTokenType("FLOAT")
+    /** A string without an interpolation, quotes included. */
     @JvmField val STRING = AntTokenType("STRING")
-    @JvmField val TEMPLATE_START = AntTokenType("TEMPLATE_START")
-    @JvmField val TEMPLATE_TEXT = AntTokenType("TEMPLATE_TEXT")
-    @JvmField val TEMPLATE_END = AntTokenType("TEMPLATE_END")
+    /** The pieces of a string with interpolations: its opening quote, its text, and its closing quote. */
+    @JvmField val STRING_START = AntTokenType("STRING_START")
+    @JvmField val STRING_TEXT = AntTokenType("STRING_TEXT")
+    @JvmField val STRING_END = AntTokenType("STRING_END")
     @JvmField val INTERPOLATION_START = AntTokenType("INTERPOLATION_START")
     @JvmField val INTERPOLATION_END = AntTokenType("INTERPOLATION_END")
+    /** A raw string between backticks, which has no escapes and no interpolations. */
+    @JvmField val RAW_STRING = AntTokenType("RAW_STRING")
     @JvmField val REGEX = AntTokenType("REGEX")
-    /** Pieces of a string or template text, from [AntEscapeLexer]. */
+    /** Pieces of a string or its text, from [AntEscapeLexer]. */
     @JvmField val VALID_ESCAPE = AntTokenType("VALID_ESCAPE")
     @JvmField val INVALID_ESCAPE = AntTokenType("INVALID_ESCAPE")
 
@@ -68,7 +72,7 @@ object AntTokenTypes {
     @JvmField val RAW_TEXT = AntTokenType("RAW_TEXT")
 
     @JvmField val COMMENTS = TokenSet.create(SHEBANG, LINE_COMMENT, MODULE_DOC_COMMENT, BLOCK_COMMENT)
-    @JvmField val STRINGS = TokenSet.create(STRING, TEMPLATE_START, TEMPLATE_TEXT, TEMPLATE_END, REGEX, ATTR_VALUE)
+    @JvmField val STRINGS = TokenSet.create(STRING, STRING_START, STRING_TEXT, STRING_END, RAW_STRING, REGEX, ATTR_VALUE)
     @JvmField val OPENERS = TokenSet.create(LBRACE, LPAREN, LBRACKET, INTERPOLATION_START, MARKUP_EXPR_START, TAG_OPEN)
     @JvmField val CLOSERS = TokenSet.create(RBRACE, RPAREN, RBRACKET, INTERPOLATION_END, MARKUP_EXPR_END, END_TAG_OPEN)
 

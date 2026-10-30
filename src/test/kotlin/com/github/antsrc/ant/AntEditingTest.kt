@@ -47,6 +47,14 @@ class AntEditingTest : BasePlatformTestCase() {
         myFixture.checkResult("var x = {\"<caret>\"}")
     }
 
+    fun testRawStringQuotesAutoClose() {
+        myFixture.configureByText("a.ant", "var x = <caret>")
+        myFixture.type('`')
+        myFixture.checkResult("var x = `<caret>`")
+        myFixture.type('`')
+        myFixture.checkResult("var x = ``<caret>")
+    }
+
     fun testLineComment() {
         myFixture.configureByText("a.ant", "var <caret>x = 1\nvar y = 2")
         myFixture.performEditorAction(IdeActions.ACTION_COMMENT_LINE)
@@ -55,8 +63,8 @@ class AntEditingTest : BasePlatformTestCase() {
         assertEquals("//var x = 1\n//var y = 2", myFixture.editor.document.text)
     }
 
-    fun testBraceMatchingAcrossMarkupAndTemplates() {
-        myFixture.configureByText("a.ant", "var s = `a <caret>\${f({ x })} b`")
+    fun testBraceMatchingAcrossMarkupAndStrings() {
+        myFixture.configureByText("a.ant", "var s = \"a <caret>\${f({ x })} b\"")
         val editor = myFixture.editor
         val offset = editor.caretModel.offset
         val iterator = editor.highlighter.createIterator(offset)

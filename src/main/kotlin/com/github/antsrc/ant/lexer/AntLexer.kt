@@ -29,6 +29,7 @@ import com.github.antsrc.ant.lexer.AntTokenTypes.MODULE_DOC_COMMENT
 import com.github.antsrc.ant.lexer.AntTokenTypes.OPERATOR
 import com.github.antsrc.ant.lexer.AntTokenTypes.PIPE
 import com.github.antsrc.ant.lexer.AntTokenTypes.QDOT
+import com.github.antsrc.ant.lexer.AntTokenTypes.RAW_STRING
 import com.github.antsrc.ant.lexer.AntTokenTypes.RAW_TEXT
 import com.github.antsrc.ant.lexer.AntTokenTypes.RBRACE
 import com.github.antsrc.ant.lexer.AntTokenTypes.RBRACKET
@@ -38,13 +39,13 @@ import com.github.antsrc.ant.lexer.AntTokenTypes.RPAREN
 import com.github.antsrc.ant.lexer.AntTokenTypes.SEMICOLON
 import com.github.antsrc.ant.lexer.AntTokenTypes.SHEBANG
 import com.github.antsrc.ant.lexer.AntTokenTypes.STRING
+import com.github.antsrc.ant.lexer.AntTokenTypes.STRING_END
+import com.github.antsrc.ant.lexer.AntTokenTypes.STRING_START
+import com.github.antsrc.ant.lexer.AntTokenTypes.STRING_TEXT
 import com.github.antsrc.ant.lexer.AntTokenTypes.TAG_CLOSE
 import com.github.antsrc.ant.lexer.AntTokenTypes.TAG_NAME
 import com.github.antsrc.ant.lexer.AntTokenTypes.TAG_OPEN
 import com.github.antsrc.ant.lexer.AntTokenTypes.TAG_SELF_CLOSE
-import com.github.antsrc.ant.lexer.AntTokenTypes.TEMPLATE_END
-import com.github.antsrc.ant.lexer.AntTokenTypes.TEMPLATE_START
-import com.github.antsrc.ant.lexer.AntTokenTypes.TEMPLATE_TEXT
 import com.github.antsrc.ant.lexer.AntTokenTypes.WHITE_SPACE
 import com.intellij.lexer.LexerBase
 import com.intellij.psi.tree.IElementType
@@ -53,10 +54,12 @@ import com.intellij.psi.tree.IElementType
  * The lexer that colors Ant source (ant-lang.md sections 2 and 5). It reads the same tokens as
  * `ant`'s lexer, with the two context rules that need the token before: a `/` begins a regular
  * expression and a `<` begins markup unless the last token is an operand, and a `<` that starts a
- * line of a block begins markup even after one. Template strings and markup are read as several
- * tokens, so that the code inside `${...}` and `{...}` is colored as code. It recovers from
- * anything: a malformed character is one [BAD_CHARACTER], an unterminated literal ends with its
- * line or the file, and the errors themselves come from the language server.
+ * line of a block begins markup even after one. A string with interpolations and markup are read
+ * as several tokens, so that the code inside `${...}` and `{...}` is colored as code; a string
+ * without one is a single [STRING], and a raw string a single [RAW_STRING]. It recovers from
+ * anything: a malformed character is one [BAD_CHARACTER], a string or raw string left open to the
+ * end of the file ends with its first line, as `ant` reads it when recovering, another unterminated
+ * literal ends with its line or the file, and the errors themselves come from the language server.
  *
  * The lexer keeps a stack of what it is inside of, so its state is the whole stack: it is 0 only
  * at the start of the file and where nothing is open and no token precedes, and the editor
@@ -124,7 +127,7 @@ class AntLexer : LexerBase() {
     private fun next(): IElementType {
         val top = stack.lastOrNull()
         return when (top?.kind) {
-            TEMPLATE -> templateText()
+            STRING_BODY -> stringText(top)
             TAG -> tag(top)
             CONTENT -> content(top)
             END_TAG -> endTag(top)
@@ -149,11 +152,7 @@ class AntLexer : LexerBase() {
             isDigit(c) -> number()
             isLetter(c) || c == '_' -> word()
             c == '"' -> string()
-            c == '`' -> {
-                pos++
-                push(TEMPLATE)
-                TEMPLATE_START
-            }
+            c == '`' -> rawString()
             c == '/' && prev and P_OPERAND == 0 -> regex()
             c == '<' && markupAllowed() -> {
                 pos++
@@ -271,17 +270,100 @@ class AntLexer : LexerBase() {
         }
     }
 
+    /**
+     * A string at its `"` (section 2, Literals). It may span lines; one left open to the end of the
+     * file ends with its first line instead. Without an interpolation it is one [STRING]; with one
+     * it is a [STRING_START], its text and interpolations, and a [STRING_END].
+     */
     private fun string(): IElementType {
-        pos++
-        while (pos < end) {
-            val c = ch(pos)
-            if (c == '\n' || c == '\r') break
-            pos++
+        val oneLine = stringEnd(pos) < 0
+        var i = pos + 1
+        while (i < end) {
+            val c = ch(i)
+            if (oneLine && (c == '\n' || c == '\r')) break
+            if (c == '$' && ch(i + 1) == '{') {
+                pos++
+                push(STRING_BODY).phase = if (oneLine) 1 else 0
+                return STRING_START
+            }
+            i++
             if (c == '"') break
-            if (c == '\\' && pos < end && ch(pos) != '\n' && ch(pos) != '\r') pos++
+            if (c == '\\' && i < end && !(oneLine && (ch(i) == '\n' || ch(i) == '\r'))) i++
         }
+        pos = i
         setPrev(operand = true, continues = false)
         return STRING
+    }
+
+    /** A raw string at its backtick: up to the next one, or to the end of its line when there is none. */
+    private fun rawString(): IElementType {
+        val close = indexOf("`", pos + 1)
+        if (close >= 0) {
+            pos = close + 1
+        } else {
+            pos++
+            toLineEnd()
+        }
+        setPrev(operand = true, continues = false)
+        return RAW_STRING
+    }
+
+    /**
+     * The end of the string whose `"` is at from, after its closing quote, or -1 when it is open to
+     * the end of the file. The code of an interpolation is skipped by its braces, the strings, raw
+     * strings, and comments in it, which is enough to find where it ends.
+     */
+    private fun stringEnd(from: Int): Int {
+        var i = from + 1
+        while (i < end) {
+            val c = ch(i)
+            when {
+                c == '"' -> return i + 1
+                c == '\\' -> i += 2
+                c == '$' && ch(i + 1) == '{' -> {
+                    i = interpolationEnd(i + 2)
+                    if (i < 0) return -1
+                }
+                else -> i++
+            }
+        }
+        return -1
+    }
+
+    /** The end of the interpolation whose code starts at from, after its `}`, or -1 (see [stringEnd]). */
+    private fun interpolationEnd(from: Int): Int {
+        var i = from
+        var depth = 0
+        while (i < end) {
+            val c = ch(i)
+            when {
+                c == '"' -> {
+                    i = stringEnd(i)
+                    if (i < 0) return -1
+                }
+                c == '`' -> {
+                    val j = indexOf("`", i + 1)
+                    if (j < 0) return -1
+                    i = j + 1
+                }
+                c == '/' && ch(i + 1) == '/' -> {
+                    while (i < end && ch(i) != '\n' && ch(i) != '\r') i++
+                }
+                c == '/' && ch(i + 1) == '*' -> {
+                    val j = indexOf("*/", i + 2)
+                    if (j < 0) return -1
+                    i = j + 2
+                }
+                c == '{' -> { depth++; i++ }
+                c == '}' -> {
+                    if (depth == 0) return i + 1
+                    depth--
+                    i++
+                }
+                else -> i++
+            }
+        }
+        return -1
     }
 
     /** A regular expression literal at its `/`, read as `ant` reads it; unterminated, it ends with its line. */
@@ -357,7 +439,7 @@ class AntLexer : LexerBase() {
             ')' -> { popIf(PAREN); setPrev(operand = true, continues = false); RPAREN }
             ']' -> { popIf(PAREN); setPrev(operand = true, continues = false); RBRACKET }
             '}' -> when (stack.lastOrNull()?.kind) {
-                TEMPLATE_EXPR -> { pop(); INTERPOLATION_END }
+                INTERPOLATION -> { pop(); INTERPOLATION_END }
                 MARKUP_EXPR -> { pop(); MARKUP_EXPR_END }
                 else -> { popIf(BRACE); setPrev(operand = true, continues = false); RBRACE }
             }
@@ -370,31 +452,39 @@ class AntLexer : LexerBase() {
         }
     }
 
-    // Template strings
+    // Strings with interpolations
 
-    private fun templateText(): IElementType {
+    /** The text of a string with interpolations; f.phase is 1 when it ends with its first line. */
+    private fun stringText(f: Frame): IElementType {
         val c = ch(pos)
+        val oneLine = f.phase == 1
         return when {
-            c == '`' -> {
+            c == '"' -> {
                 pos++
                 pop()
                 setPrev(operand = true, continues = false)
-                TEMPLATE_END
+                STRING_END
             }
             c == '$' && ch(pos + 1) == '{' -> {
                 pos += 2
-                push(TEMPLATE_EXPR)
+                push(INTERPOLATION)
                 prev = 0
                 INTERPOLATION_START
+            }
+            oneLine && (c == '\n' || c == '\r') -> {
+                // An unterminated string ends with its line, and what follows is code again.
+                pop()
+                setPrev(operand = true, continues = false)
+                code()
             }
             else -> {
                 while (pos < end) {
                     val d = ch(pos)
-                    if (d == '`' || d == '$' && ch(pos + 1) == '{') break
-                    if (d == '\\' && pos + 1 < end) pos++
+                    if (d == '"' || d == '$' && ch(pos + 1) == '{' || oneLine && (d == '\n' || d == '\r')) break
+                    if (d == '\\' && pos + 1 < end && !(oneLine && (ch(pos + 1) == '\n' || ch(pos + 1) == '\r'))) pos++
                     pos++
                 }
-                TEMPLATE_TEXT
+                STRING_TEXT
             }
         }
     }
@@ -616,15 +706,15 @@ class AntLexer : LexerBase() {
         // Frame kinds: what the lexer is inside of.
         private const val PAREN = 1 // ( or [: line breaks end nothing
         private const val BRACE = 2 // {: a block or a literal
-        private const val TEMPLATE = 3 // the text of a template string
-        private const val TEMPLATE_EXPR = 4 // the code of a ${...}
+        private const val STRING_BODY = 3 // the text of a string with interpolations
+        private const val INTERPOLATION = 4 // the code of a ${...}
         private const val TAG = 5 // a start tag, from its name to its >
         private const val CONTENT = 6 // the content of an element or fragment
         private const val END_TAG = 7 // an end tag, from </ to its >
         private const val RAW = 8 // the text of <script> or <style>
         private const val MARKUP_EXPR = 9 // the code of a {...} in markup
 
-        private fun isCode(kind: Int?) = kind == null || kind == PAREN || kind == BRACE || kind == TEMPLATE_EXPR || kind == MARKUP_EXPR
+        private fun isCode(kind: Int?) = kind == null || kind == PAREN || kind == BRACE || kind == INTERPOLATION || kind == MARKUP_EXPR
 
         // The flags of prev.
         private const val P_HAS = 1 // a token precedes

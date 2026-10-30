@@ -16,7 +16,7 @@ class AntSyntaxHighlighter : SyntaxHighlighterBase() {
     override fun getHighlightingLexer(): Lexer {
         val lexer = LayeredLexer(AntLexer())
         lexer.registerSelfStoppingLayer(AntEscapeLexer(T.STRING), arrayOf(T.STRING), IElementType.EMPTY_ARRAY)
-        lexer.registerSelfStoppingLayer(AntEscapeLexer(T.TEMPLATE_TEXT), arrayOf(T.TEMPLATE_TEXT), IElementType.EMPTY_ARRAY)
+        lexer.registerSelfStoppingLayer(AntEscapeLexer(T.STRING_TEXT), arrayOf(T.STRING_TEXT), IElementType.EMPTY_ARRAY)
         return lexer
     }
 
@@ -31,9 +31,10 @@ class AntSyntaxHighlighter : SyntaxHighlighterBase() {
             T.INT to AntColors.NUMBER,
             T.FLOAT to AntColors.NUMBER,
             T.STRING to AntColors.STRING,
-            T.TEMPLATE_START to AntColors.STRING,
-            T.TEMPLATE_TEXT to AntColors.STRING,
-            T.TEMPLATE_END to AntColors.STRING,
+            T.STRING_START to AntColors.STRING,
+            T.STRING_TEXT to AntColors.STRING,
+            T.STRING_END to AntColors.STRING,
+            T.RAW_STRING to AntColors.STRING,
             T.INTERPOLATION_START to AntColors.INTERPOLATION,
             T.INTERPOLATION_END to AntColors.INTERPOLATION,
             T.VALID_ESCAPE to AntColors.VALID_ESCAPE,

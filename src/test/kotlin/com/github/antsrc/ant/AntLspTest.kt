@@ -105,14 +105,14 @@ class AntLspTest : BasePlatformTestCase() {
             assertTrue("completion offers String: " + items.map { it.lookupString }, items.any { it.lookupString == "String" })
         }
 
-        // Members after a dot inside a template interpolation, and import paths inside the string.
+        // Members after a dot inside a string interpolation, and import paths inside the string.
         File(dir, "lib").mkdirs()
         File(dir, "lib/util.ant").writeText("export func twice(n: int): int { n * 2 }\n")
         LocalFileSystem.getInstance().refreshAndFindFileByIoFile(File(dir, "lib"))
         val results = ArrayList<String>()
         val cases = listOf(
             "var m = Math.<caret>\n" to "PI",
-            "var t = `${'$'}{Math.<caret>}`\n" to "PI",
+            "var t = \"${'$'}{Math.<caret>}\"\n" to "PI",
             "import \"./lib/<caret>\"\n" to "util.ant",
         )
         for ((i, case) in cases.withIndex()) {

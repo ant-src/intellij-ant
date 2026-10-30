@@ -54,27 +54,52 @@ class AntLexerTest {
             "KEYWORD(var) IDENTIFIER(s) OPERATOR(=) STRING(\"a) VALID_ESCAPE(\\n) STRING(b) INVALID_ESCAPE(\\q) STRING(c) VALID_ESCAPE(\\u{1F600}) INVALID_ESCAPE(\\u{D800}) STRING(\")",
             toks.joinToString(" "),
         )
-        // an unterminated string ends with its line
+        // a string spans lines, but one left open to the end of the file ends with its line
+        assertEquals("STRING(\"a\\nb\") IDENTIFIER(x)", shape("\"a\nb\" x"))
         assertEquals("STRING(\"abc) KEYWORD(var) IDENTIFIER(y)", shape("\"abc\nvar y"))
         assertEquals("STRING(\"a\\\"b\")", shape("\"a\\\"b\""))
+        // \` is no longer an escape, and \$ keeps ${ from interpolating
+        assertEquals("STRING(\"a) INVALID_ESCAPE(\\`) STRING(\")", lex("\"a\\`\"", escapes = true).joinToString(" "))
+        assertEquals("STRING(\"a) VALID_ESCAPE(\\$) STRING({x}\")", lex("\"a\\\${x}\"", escapes = true).joinToString(" "))
+        assertEquals("STRING(\"$5\")", shape("\"$5\""))
     }
 
     @Test
-    fun templateStrings() {
+    fun interpolation() {
         assertEquals(
-            "TEMPLATE_START(`) TEMPLATE_TEXT(total: ) INTERPOLATION_START(\${) IDENTIFIER(count) INTERPOLATION_END(}) TEMPLATE_TEXT( items) TEMPLATE_END(`)",
-            shape("`total: \${count} items`"),
+            "STRING_START(\") STRING_TEXT(total: ) INTERPOLATION_START(\${) IDENTIFIER(count) INTERPOLATION_END(}) STRING_TEXT( items) STRING_END(\")",
+            shape("\"total: \${count} items\""),
         )
-        // braces nest inside an interpolation, and the template is an operand
+        // braces nest inside an interpolation, and the string is an operand
         assertEquals(
-            "KEYWORD(var) IDENTIFIER(s) OPERATOR(=) TEMPLATE_START(`) INTERPOLATION_START(\${) IDENTIFIER(xs) PIPE(|) IDENTIFIER(Array) DOT(.) IDENTIFIER(map) LPAREN(() LBRACE({) IDENTIFIER(x) RBRACE(}) RPAREN()) INTERPOLATION_END(}) TEMPLATE_TEXT( done) TEMPLATE_END(`) OPERATOR(/) INT(2)",
-            shape("var s = `\${xs | Array.map({ x })} done` / 2"),
+            "KEYWORD(var) IDENTIFIER(s) OPERATOR(=) STRING_START(\") INTERPOLATION_START(\${) IDENTIFIER(xs) PIPE(|) IDENTIFIER(Array) DOT(.) IDENTIFIER(map) LPAREN(() LBRACE({) IDENTIFIER(x) RBRACE(}) RPAREN()) INTERPOLATION_END(}) STRING_TEXT( done) STRING_END(\") OPERATOR(/) INT(2)",
+            shape("var s = \"\${xs | Array.map({ x })} done\" / 2"),
         )
-        // a template spans lines and keeps escapes in its text
-        val toks = lex("`a\\`b\n\${1}`", escapes = true)
-        assertEquals("TEMPLATE_START(`) TEMPLATE_TEXT(a) VALID_ESCAPE(\\`) TEMPLATE_TEXT(b\\n) INTERPOLATION_START(\${) INT(1) INTERPOLATION_END(}) TEMPLATE_END(`)", toks.joinToString(" "))
-        assertTrue(endsBalanced("var s = `a \${f({ a: 1 })} b`"))
-        assertFalse(endsBalanced("var s = `open"))
+        // strings nest inside an interpolation
+        assertEquals(
+            "STRING_START(\") STRING_TEXT(a ) INTERPOLATION_START(\${) IDENTIFIER(f) LPAREN(() STRING(\"}\") RPAREN()) INTERPOLATION_END(}) STRING_END(\")",
+            shape("\"a \${f(\"}\")}\""),
+        )
+        // a string with interpolations spans lines and keeps escapes in its text
+        val toks = lex("\"a\\\"b\n\${1}\"", escapes = true)
+        assertEquals("STRING_START(\") STRING_TEXT(a) VALID_ESCAPE(\\\") STRING_TEXT(b\\n) INTERPOLATION_START(\${) INT(1) INTERPOLATION_END(}) STRING_END(\")", toks.joinToString(" "))
+        assertTrue(endsBalanced("var s = \"a \${f({ a: 1 })} b\""))
+        assertTrue(endsBalanced("var s = \"a\nb \${x}\nc\""))
+        // one left open to the end of the file ends with its line
+        assertEquals(
+            "STRING_START(\") STRING_TEXT(a ) INTERPOLATION_START(\${) IDENTIFIER(x) INTERPOLATION_END(}) KEYWORD(var) IDENTIFIER(y)",
+            shape("\"a \${x}\nvar y"),
+        )
+    }
+
+    @Test
+    fun rawStrings() {
+        // no escapes and no interpolations: a raw string is one token, even with the escape layer
+        assertEquals("RAW_STRING(`C:\\temp \${x} \"hi\"`)", lex("`C:\\temp \${x} \"hi\"`", escapes = true).joinToString(" "))
+        assertEquals("KEYWORD(var) IDENTIFIER(s) OPERATOR(=) RAW_STRING(`a\\nb`) OPERATOR(/) INT(2)", shape("var s = `a\nb` / 2"))
+        // one with no closing backtick ends with its line
+        assertEquals("RAW_STRING(`abc) KEYWORD(var) IDENTIFIER(y)", shape("`abc\nvar y"))
+        assertTrue(endsBalanced("var s = `a\nb`"))
     }
 
     @Test
@@ -192,7 +217,7 @@ class AntLexerTest {
     @Test
     fun stateIsZeroOnlyAtTheStart() {
         val lexer = com.github.antsrc.ant.lexer.AntLexer()
-        lexer.start("var x = `a \${b} c`\n<p>{x}</p>\n")
+        lexer.start("var x = \"a \${b} c\"\n<p>{x}</p>\n")
         val states = ArrayList<Int>()
         while (lexer.tokenType != null) {
             states.add(lexer.state)
@@ -202,7 +227,7 @@ class AntLexerTest {
         assertEquals(0, states.first())
         assertTrue(states.toString(), states.drop(1).none { it == 0 })
         // the same text lexes to the same states
-        lexer.start("var x = `a \${b} c`\n<p>{x}</p>\n")
+        lexer.start("var x = \"a \${b} c\"\n<p>{x}</p>\n")
         val again = ArrayList<Int>()
         while (lexer.tokenType != null) {
             again.add(lexer.state)

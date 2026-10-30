@@ -92,8 +92,9 @@ class AntColorSettingsPage : ColorSettingsPage {
             var <var>total</var> = <var>shapes</var>
               | <prelude>Array</prelude>.<fcall>map</fcall>({ <fcall>area</fcall>(<var>x</var>) })
               | <prelude>Array</prelude>.<fcall>sum</fcall>()
-            <prelude>println</prelude>(`total: ${'$'}{<var>total</var>} over ${'$'}{<var>shapes</var>.length}\n`)
+            <prelude>println</prelude>("total: ${'$'}{<var>total</var>} over ${'$'}{<var>shapes</var>.length}\n")
             var <var>ok</var> = <prelude>Regex</prelude>.<fcall>test</fcall>(/^\d+$/i, "42\u{1F600}\q")
+            var <var>dir</var> = `C:\ant\${'$'}{HOME}`
             let x = 1
 
             func <fdecl>card</fdecl>(<param>title</param>: string, <param>items</param>: Array[string]): Html {
