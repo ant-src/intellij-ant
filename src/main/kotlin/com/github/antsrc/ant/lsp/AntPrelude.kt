@@ -35,7 +35,13 @@ class AntPrelude {
         if (current.content.toString() == text) return
         ApplicationManager.getApplication().invokeLater {
             WriteAction.run<RuntimeException> {
-                current.setContent(null, text, true)
+                // read-only for the user, so writable only while the server's text goes in
+                current.isWritable = true
+                try {
+                    current.setContent(null, text, true)
+                } finally {
+                    current.isWritable = false
+                }
                 FileDocumentManager.getInstance().reloadFiles(current)
             }
         }
