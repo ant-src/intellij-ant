@@ -115,7 +115,7 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         )
         val tests = AntTests.of(file)
         assertEquals(
-            listOf("push=^push$", "a.b (\"c\")=^a\\.b \\(\"c\"\\)$", "0x10=^a\\.b \\(\"c\"\\)$/^0x10$"),
+            listOf("push=^push$", "a.b (\"c\")=^a\\.b \\(\"c\"\\)$", "0x10=^a\\.b \\(\"c\"\\)$/^0x10( #[0-9]+)?$"),
             tests.map { "${it.name}=${it.pattern}" },
         )
         assertEquals(file.text.indexOf("test \"push\""), tests[0].range.startOffset)
@@ -124,6 +124,7 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         assertEquals("0x10", AntTests.around(file, inner)?.name)
         assertEquals("a.b (\"c\")", AntTests.around(file, file.text.indexOf("hidden"))?.name)
         assertNull(AntTests.around(file, file.text.indexOf("helper")))
+        assertEquals("^a\\/b$", AntTests.quote("a/b"))
         val plain = myFixture.configureByText("stack.ant", "test \"push\" {}\n")
         assertEquals("only a test file has tests", emptyList<AntTest>(), AntTests.of(plain))
     }

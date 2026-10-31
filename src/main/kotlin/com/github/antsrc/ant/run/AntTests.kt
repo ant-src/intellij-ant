@@ -33,15 +33,18 @@ object AntTests {
     fun around(file: PsiFile, offset: Int): AntTest? = of(file).lastOrNull { offset in it.range.startOffset until it.range.endOffset }
 
     /**
-     * `^name$` with the name quoted as a regular expression, as Go's regexp.QuoteMeta quotes it;
-     * the -run pattern of a subtest appends its own to its parent's after a `/`.
+     * `^name$` with the name quoted as a regular expression, as Go's regexp.QuoteMeta quotes it,
+     * and each `/` escaped too, so it does not split the -run pattern into levels; a subtest's
+     * also matches the name with ` #2`, ` #3` appended, which repeats of it get. The -run pattern
+     * of a subtest appends its own to its parent's after a `/`, as `ant lsp` writes it.
      */
-    fun quote(name: String): String = buildString {
+    fun quote(name: String, subtest: Boolean = false): String = buildString {
         append('^')
         for (c in name) {
-            if (c in """\.+*?()|[]{}^$""") append('\\')
+            if (c in """\.+*?()|[]{}^$/""") append('\\')
             append(c)
         }
+        if (subtest) append("( #[0-9]+)?")
         append('$')
     }
 
@@ -84,7 +87,7 @@ object AntTests {
                     val pattern = when {
                         name == null -> null
                         enclosing == null -> quote(name)
-                        else -> enclosing.pattern?.let { it + "/" + quote(name) }
+                        else -> enclosing.pattern?.let { it + "/" + quote(name, subtest = true) }
                     }
                     pending[brace] = Frame.Test(token, name, pattern)
                 }
