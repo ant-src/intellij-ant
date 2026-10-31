@@ -3,9 +3,9 @@
 <!-- plugin description -->
 
 Support for the [Ant](https://github.com/ant-src/ant) programming language: highlighting, run
-configurations, debugging through `ant dap`, and the language features of `ant lsp` through the
-IDE's own LSP client, including diagnostics, completion, hover, go to definition, references, and
-formatting.
+configurations, tests with `ant test`, debugging through `ant dap`, and the language features of
+`ant lsp` through the IDE's own LSP client, including diagnostics, completion, hover, go to
+definition, references, and formatting.
 <!-- plugin description end -->
 
 Needs IntelliJ IDEA 2025.3 or later (not the open-source builds or Android Studio, which lack the
@@ -27,6 +27,16 @@ another one.
 Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file. The
 run configuration can name a file whose contents are the program's standard input; without one, the
 program reads the console under Run and sees end of file under the debugger.
+
+## Test
+
+In a test file, whose name ends in `_test.ant`, `test` is highlighted as a keyword, and the gutter
+shows a run icon on each test whose name is a string without interpolation: Run or Debug there runs
+that test alone, with `ant test -run` or under `ant dap`. Run from the editor runs the test around
+the caret, or all the file's tests outside one. An Ant run configuration on a test file runs
+`ant test`; its Tests to run field is a `-run` pattern, and its program arguments are flags of
+`ant test`, such as `-v`. IDEs whose LSP client shows code lenses (2026.2 does, 2025.3 does not)
+also show the run test and debug test lenses of `ant lsp`, which do the same.
 
 ## Debug
 
