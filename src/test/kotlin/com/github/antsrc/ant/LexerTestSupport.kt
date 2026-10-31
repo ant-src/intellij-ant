@@ -13,15 +13,15 @@ class Tok(val type: IElementType, val text: String) {
     override fun toString() = "${type.toString().removePrefix("Ant:")}(${text.replace("\n", "\\n")})"
 }
 
-/** Tokenizes src with the highlighting lexer, with escapes split as the editor sees them. */
-fun lex(src: String, escapes: Boolean = false): List<Tok> {
+/** Tokenizes src with the highlighting lexer, with escapes split as the editor sees them; testFile lexes it as a `_test.ant` file. */
+fun lex(src: String, escapes: Boolean = false, testFile: Boolean = false): List<Tok> {
     val lexer: Lexer = if (escapes) {
-        LayeredLexer(AntLexer()).apply {
+        LayeredLexer(AntLexer(testFile)).apply {
             registerSelfStoppingLayer(AntEscapeLexer(AntTokenTypes.STRING), arrayOf(AntTokenTypes.STRING), IElementType.EMPTY_ARRAY)
             registerSelfStoppingLayer(AntEscapeLexer(AntTokenTypes.STRING_TEXT), arrayOf(AntTokenTypes.STRING_TEXT), IElementType.EMPTY_ARRAY)
         }
     } else {
-        AntLexer()
+        AntLexer(testFile)
     }
     lexer.start(src)
     val out = ArrayList<Tok>()
@@ -43,11 +43,11 @@ fun typeOf(src: String, text: String): IElementType =
     lex(src).firstOrNull { it.text == text }?.type ?: throw AssertionError("no token $text in ${lex(src)}")
 
 /** The tokens that are not white space, as `TYPE(text)`. */
-fun shape(src: String): String = lex(src).filter { it.type != AntTokenTypes.WHITE_SPACE }.joinToString(" ")
+fun shape(src: String, testFile: Boolean = false): String = lex(src, testFile = testFile).filter { it.type != AntTokenTypes.WHITE_SPACE }.joinToString(" ")
 
 /** Whether the lexer ends src with nothing open: at the top level with the next line starting fresh. */
-fun endsBalanced(src: String): Boolean {
-    val lexer = AntLexer()
+fun endsBalanced(src: String, testFile: Boolean = false): Boolean {
+    val lexer = AntLexer(testFile)
     lexer.start("$src\n;")
     var last: IElementType? = null
     while (lexer.tokenType != null) {

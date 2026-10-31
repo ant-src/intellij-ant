@@ -18,7 +18,7 @@ class AntLexerCorpusTest {
     fun corpusLexesClean() {
         val repo = File(System.getenv("ANT_REPO") ?: "../ant")
         assumeTrue("no ant repository at $repo", repo.isDirectory)
-        val dirs = listOf("tests/run", "tests/check", "tests/check/lib", "tests/unchecked", "examples", "examples/lib", "examples/lib/shapes")
+        val dirs = listOf("tests/run", "tests/check", "tests/check/lib", "tests/unchecked", "examples", "examples/lib", "examples/lib/shapes", "tests/test")
         var files = 0
         val problems = ArrayList<String>()
         for (dir in dirs) {
@@ -27,9 +27,10 @@ class AntLexerCorpusTest {
             for (f in full.listFiles()!!.filter { it.name.endsWith(".ant") }.sortedBy { it.name }) {
                 files++
                 val src = f.readText()
-                val toks = lex(src)
+                val testFile = f.name.endsWith("_test.ant")
+                val toks = lex(src, testFile = testFile)
                 toks.filter { it.type == AntTokenTypes.BAD_CHARACTER }.forEach { problems.add("$dir/${f.name}: bad character ${it.text}") }
-                if (!endsBalanced(src)) problems.add("$dir/${f.name}: something is left open at the end")
+                if (!endsBalanced(src, testFile)) problems.add("$dir/${f.name}: something is left open at the end")
             }
         }
         assertTrue("only $files corpus files under $repo", files > 100)

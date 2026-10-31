@@ -64,8 +64,12 @@ import com.intellij.psi.tree.IElementType
  * The lexer keeps a stack of what it is inside of, so its state is the whole stack: it is 0 only
  * at the start of the file and where nothing is open and no token precedes, and the editor
  * relexes from the last such point. Files are small and the lexer linear, so that is cheap.
+ *
+ * In a test file, one whose name ends in `_test.ant`, `test` is a keyword (section 10, Tests),
+ * except after `.` or `?.`; elsewhere it is a plain name. Only the highlighter knows the file, so
+ * it passes [testFile]; the PSI's tokens, which nothing reads keywords from, leave it a name.
  */
-class AntLexer : LexerBase() {
+class AntLexer(private val testFile: Boolean = false) : LexerBase() {
     private var buffer: CharSequence = ""
     private var end = 0
     private var tokenStart = 0
@@ -248,8 +252,9 @@ class AntLexer : LexerBase() {
         var j = pos
         while (ch(j) == ' ' || ch(j) == '\t') j++
         val plainName = prev and P_DOT != 0 || ch(j) == ':'
+        val keyword = text in AntTokenTypes.KEYWORDS || testFile && text == "test"
         return when {
-            plainName || text !in AntTokenTypes.KEYWORDS && text !in AntTokenTypes.RESERVED_WORDS -> {
+            plainName || !keyword && text !in AntTokenTypes.RESERVED_WORDS -> {
                 setPrev(operand = true, continues = false)
                 IDENTIFIER
             }
@@ -257,7 +262,7 @@ class AntLexer : LexerBase() {
                 setPrev(operand = true, continues = false)
                 LITERAL_KEYWORD
             }
-            text in AntTokenTypes.KEYWORDS -> {
+            keyword -> {
                 val operand = text == "void"
                 val jump = text == "return" || text == "break" || text == "continue"
                 setPrev(operand = operand, continues = !operand && !jump, jump = text == "return")

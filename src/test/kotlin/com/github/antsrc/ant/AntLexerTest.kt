@@ -25,6 +25,21 @@ class AntLexerTest {
     }
 
     @Test
+    fun testIsAKeywordInTestFiles() {
+        assertEquals(
+            "KEYWORD(test) STRING(\"parse\") LBRACE({) KEYWORD(test) STRING_START(\") INTERPOLATION_START(\${) IDENTIFIER(c) INTERPOLATION_END(}) STRING_END(\") LBRACE({) RBRACE(}) RBRACE(})",
+            shape("test \"parse\" {\n  test \"\${c}\" {}\n}", testFile = true),
+        )
+        // after . or ?. it is a field, and before : a name, in every file
+        assertEquals("IDENTIFIER(Regex) DOT(.) IDENTIFIER(test) LPAREN(() IDENTIFIER(r) COMMA(,) IDENTIFIER(s) RPAREN())", shape("Regex.test(r, s)", testFile = true))
+        assertEquals("IDENTIFIER(x) QDOT(?.) IDENTIFIER(test)", shape("x?.test", testFile = true))
+        assertEquals("LBRACE({) IDENTIFIER(test) COLON(:) INT(1) RBRACE(})", shape("{ test: 1 }", testFile = true))
+        // elsewhere it is a plain name
+        assertEquals("IDENTIFIER(test) STRING(\"a\") LBRACE({) RBRACE(})", shape("test \"a\" {}"))
+        assertEquals("KEYWORD(var) IDENTIFIER(test) OPERATOR(=) INT(1)", shape("var test = 1"))
+    }
+
+    @Test
     fun comments() {
         assertEquals("LINE_COMMENT(// hi) KEYWORD(var) IDENTIFIER(x)", shape("// hi\nvar x"))
         assertEquals(T.MODULE_DOC_COMMENT, typeOf("//! Geometry has points.", "//! Geometry has points."))

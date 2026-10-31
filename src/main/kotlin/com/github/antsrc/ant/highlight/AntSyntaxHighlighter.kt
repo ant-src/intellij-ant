@@ -1,5 +1,6 @@
 package com.github.antsrc.ant.highlight
 
+import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.lexer.AntEscapeLexer
 import com.github.antsrc.ant.lexer.AntLexer
 import com.github.antsrc.ant.lexer.AntTokenTypes as T
@@ -12,9 +13,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.tree.IElementType
 
-class AntSyntaxHighlighter : SyntaxHighlighterBase() {
+/** Colors an Ant file; [testFile] makes `test` a keyword, as it is in a file named `*_test.ant`. */
+class AntSyntaxHighlighter(private val testFile: Boolean = false) : SyntaxHighlighterBase() {
     override fun getHighlightingLexer(): Lexer {
-        val lexer = LayeredLexer(AntLexer())
+        val lexer = LayeredLexer(AntLexer(testFile))
         lexer.registerSelfStoppingLayer(AntEscapeLexer(T.STRING), arrayOf(T.STRING), IElementType.EMPTY_ARRAY)
         lexer.registerSelfStoppingLayer(AntEscapeLexer(T.STRING_TEXT), arrayOf(T.STRING_TEXT), IElementType.EMPTY_ARRAY)
         return lexer
@@ -77,5 +79,6 @@ class AntSyntaxHighlighter : SyntaxHighlighterBase() {
 }
 
 class AntSyntaxHighlighterFactory : SyntaxHighlighterFactory() {
-    override fun getSyntaxHighlighter(project: Project?, virtualFile: VirtualFile?) = AntSyntaxHighlighter()
+    override fun getSyntaxHighlighter(project: Project?, virtualFile: VirtualFile?) =
+        AntSyntaxHighlighter(virtualFile?.name?.let(AntFileType::isTestFile) == true)
 }
