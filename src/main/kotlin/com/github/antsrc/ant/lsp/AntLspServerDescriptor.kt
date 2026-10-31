@@ -15,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.platform.lsp.api.LspServerListener
 import com.intellij.platform.lsp.api.LspServerManager
 import com.intellij.platform.lsp.api.ProjectWideLspServerDescriptor
+import com.intellij.platform.lsp.api.customization.LspCommandsCustomizer
 import com.intellij.platform.lsp.api.customization.LspCompletionCustomizer
 import com.intellij.platform.lsp.api.customization.LspCustomization
 import com.intellij.platform.lsp.api.customization.LspFormattingCustomizer
@@ -96,6 +97,8 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         // The server's inlay hints (inferred types, parameter names) are not shown: too busy for Ant code.
         override val inlayHintCustomizer: LspInlayHintCustomizer = LspInlayHintDisabled
         override val completionCustomizer: LspCompletionCustomizer = AntCompletionSupport()
+        // The code lenses' commands run and debug tests (AntCommandsSupport).
+        override val commandsCustomizer: LspCommandsCustomizer = AntCommandsSupport()
     }
 
     /** Once per project, until the settings change: the server is started again for every file opened. */

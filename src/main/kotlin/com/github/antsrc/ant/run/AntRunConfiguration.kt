@@ -1,5 +1,6 @@
 package com.github.antsrc.ant.run
 
+import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.settings.AntExecutable
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.Executor
@@ -27,11 +28,16 @@ class AntRunConfigurationOptions : LocatableRunConfigurationOptions() {
     var arguments by string("")
     var workingDirectory by string("")
     var stdinFile by string("")
+    var testPattern by string("")
     var environment by map<String, String>()
     var passParentEnvironment by property(true)
 }
 
-/** Runs `ant run <file> [args...]` (ant-lang.md section 10). */
+/**
+ * Runs `ant run <file> [args...]` (ant-lang.md section 10), or for a test file, whose name ends in
+ * `_test.ant`, `ant test [-run pattern] [flags...] <file>` (test.md): the arguments are then flags
+ * of `ant test`, such as `-v`.
+ */
 class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name: String) :
     LocatableConfigurationBase<AntRunConfigurationOptions>(project, factory, name) {
 
@@ -50,6 +56,11 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     var stdinFile: String
         get() = options.stdinFile ?: ""
         set(value) { options.stdinFile = value }
+    /** The `-run` pattern of a test file's tests to run (test.md section 1); empty runs them all. */
+    var testPattern: String
+        get() = options.testPattern ?: ""
+        set(value) { options.testPattern = value }
+    val isTest: Boolean get() = AntFileType.isTestFile(file)
     var environment: EnvironmentVariablesData
         get() = EnvironmentVariablesData.create(options.environment, options.passParentEnvironment)
         set(value) {
@@ -61,6 +72,7 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
 
     override fun checkConfiguration() {
         if (file.isBlank()) throw RuntimeConfigurationError("No Ant file to run")
+        if (testPattern.isNotBlank() && !isTest) throw RuntimeConfigurationError("Tests to run need a test file, whose name ends in ${AntFileType.TEST_SUFFIX}")
         if (!File(file).isFile) throw RuntimeConfigurationError("The file does not exist: $file")
         if (stdinFile.isNotBlank() && !stdin()!!.isFile) throw RuntimeConfigurationError("The standard input file does not exist: $stdinFile")
     }
@@ -71,8 +83,16 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     @Throws(ExecutionException::class)
     fun commandLine(): GeneralCommandLine {
         val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
-        val cmd = GeneralCommandLine(ant.toString(), "run", file)
-        cmd.addParameters(ParametersListUtil.parse(arguments))
+        val cmd = GeneralCommandLine(ant.toString())
+        if (isTest) {
+            cmd.addParameter("test")
+            if (testPattern.isNotBlank()) cmd.addParameters("-run", testPattern)
+            cmd.addParameters(ParametersListUtil.parse(arguments))
+            cmd.addParameter(file)
+        } else {
+            cmd.addParameters("run", file)
+            cmd.addParameters(ParametersListUtil.parse(arguments))
+        }
         cmd.withWorkDirectory(workingDirectory())
         stdin()?.let { cmd.withInput(it) }
         environment.configureCommandLine(cmd, true)
@@ -92,10 +112,17 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
         return cmd
     }
 
-    /** The attributes of ant dap's launch request (spec/dap.md section 2). */
+    /**
+     * The attributes of ant dap's launch request (spec/dap.md section 2). A test file's arguments are
+     * flags of `ant test`, which the debugger does not take; its tests to run are the `test` attribute.
+     */
     fun launchAttributes(): Map<String, Any> = buildMap {
         put("program", file)
-        put("args", ParametersListUtil.parse(arguments))
+        if (isTest) {
+            if (testPattern.isNotBlank()) put("test", testPattern)
+        } else {
+            put("args", ParametersListUtil.parse(arguments))
+        }
         put("cwd", workingDirectory())
         put("env", environment.envs)
         stdin()?.let { put("stdin", it.path) }

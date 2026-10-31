@@ -9,6 +9,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.RawCommandLineEditor
 import com.intellij.util.ui.FormBuilder
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTextField
+import com.intellij.util.ui.UIUtil
 import javax.swing.JComponent
 
 class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguration>() {
@@ -16,6 +19,7 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
         addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFileDescriptor(AntFileType).withTitle("Ant File"))
     }
     private val arguments = RawCommandLineEditor()
+    private val testPattern = JBTextField()
     private val workingDirectory = TextFieldWithBrowseButton().apply {
         addBrowseFolderListener(project, FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle("Working Directory"))
     }
@@ -27,6 +31,7 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
     override fun resetEditorFrom(configuration: AntRunConfiguration) {
         file.text = configuration.file
         arguments.text = configuration.arguments
+        testPattern.text = configuration.testPattern
         workingDirectory.text = configuration.workingDirectory
         stdinFile.text = configuration.stdinFile
         environment.envData = configuration.environment
@@ -35,6 +40,7 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
     override fun applyEditorTo(configuration: AntRunConfiguration) {
         configuration.file = file.text.trim()
         configuration.arguments = arguments.text
+        configuration.testPattern = testPattern.text.trim()
         configuration.workingDirectory = workingDirectory.text.trim()
         configuration.stdinFile = stdinFile.text.trim()
         configuration.environment = environment.envData
@@ -43,6 +49,11 @@ class AntRunSettingsEditor(project: Project) : SettingsEditor<AntRunConfiguratio
     override fun createEditor(): JComponent = FormBuilder.createFormBuilder()
         .addLabeledComponent("Ant file:", file)
         .addLabeledComponent("Program arguments:", arguments)
+        .addLabeledComponent("Tests to run (-run):", testPattern)
+        .addComponentToRightColumn(JBLabel("For a test file: a pattern of ant test -run, and the arguments are flags of ant test").apply {
+            componentStyle = UIUtil.ComponentStyle.SMALL
+            fontColor = UIUtil.FontColor.BRIGHTER
+        })
         .addLabeledComponent("Working directory:", workingDirectory)
         .addLabeledComponent("Standard input file:", stdinFile)
         .addComponent(environment)

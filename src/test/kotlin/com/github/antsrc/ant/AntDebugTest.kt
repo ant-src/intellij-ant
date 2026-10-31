@@ -207,6 +207,34 @@ class AntDebugTest : BasePlatformTestCase() {
         Disposer.dispose(console)
     }
 
+    fun testRunAndDebugOneTest() {
+        val ant = System.getenv("ANT_PATH")?.takeIf { File(it).canExecute() } ?: return // no ant to run
+        AntSettings.getInstance().antPath = ant
+        AntExecutable.forget()
+        val dir = Files.createTempDirectory("ant-test").toFile()
+        val file = File(dir, "x_test.ant").apply {
+            writeText("test \"a\" {\n  println(\"in a\")\n}\n\ntest \"b\" {\n  println(\"in b\")\n  test \"c\" {\n    println(\"in c\")\n  }\n}\n")
+        }
+        val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
+        val configuration = type.factory.createTemplateConfiguration(project) as AntRunConfiguration
+        configuration.file = file.path
+        configuration.testPattern = "^b$/^c$"
+        configuration.arguments = "-v"
+        val run = com.intellij.execution.process.CapturingProcessHandler(configuration.commandLine()).runProcess(20_000)
+        assertEquals(run.stdout + run.stderr, 0, run.exitCode)
+        assertTrue(run.stdout, run.stdout.contains("in c") && !run.stdout.contains("in a"))
+
+        val session = startDebugging(file) { it.testPattern = "^b$/^c$" }
+        waitFor("the end of the tests") { session.debugProcess.processHandler.isProcessTerminated }
+        val console = session.consoleView as ConsoleViewImpl
+        console.flushDeferredText()
+        val text = console.editor?.document?.text ?: console.text
+        assertTrue(text, text.contains("in c"))
+        assertFalse(text, text.contains("in a"))
+        assertTrue(text, text.contains("Process finished with exit code 0"))
+        Disposer.dispose(console)
+    }
+
     fun testPanicBreakpointStopsTheSession() {
         val ant = System.getenv("ANT_PATH")?.takeIf { File(it).canExecute() } ?: return // no ant to run
         AntSettings.getInstance().antPath = ant
@@ -260,10 +288,11 @@ class AntDebugTest : BasePlatformTestCase() {
         editorsOf(virtualFile).forEach { EditorFactory.getInstance().releaseEditor(it) }
     }
 
-    private fun startDebugging(file: File): XDebugSession {
+    private fun startDebugging(file: File, configure: (AntRunConfiguration) -> Unit = {}): XDebugSession {
         val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
         val settings = RunManager.getInstance(project).createConfiguration(file.name, type.factory)
         (settings.configuration as AntRunConfiguration).file = file.path
+        configure(settings.configuration as AntRunConfiguration)
         val environment = ExecutionEnvironmentBuilder.create(DefaultDebugExecutor.getDebugExecutorInstance(), settings).build()
         var session: XDebugSession? = null
         val connection = project.messageBus.connect(testRootDisposable)

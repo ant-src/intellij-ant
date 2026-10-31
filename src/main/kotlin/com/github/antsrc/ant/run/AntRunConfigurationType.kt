@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
 
 class AntRunConfigurationType : ConfigurationType {
     override fun getDisplayName() = "Ant"
-    override fun getConfigurationTypeDescription() = "Run an Ant file with ant run"
+    override fun getConfigurationTypeDescription() = "Run an Ant file with ant run, or a test file's tests with ant test"
     override fun getIcon() = AntIcons.FILE
     override fun getId() = ID
     override fun getConfigurationFactories() = arrayOf(factory)
