@@ -47,7 +47,7 @@ kotlin {
 intellijPlatform {
     pluginConfiguration {
         id = "com.github.antsrc.ant"
-        name = "Ant"
+        name = "Ant Language"
         version = project.version.toString()
         description = providers.fileContents(layout.projectDirectory.file("README.md")).asText.map { readme ->
             val start = readme.indexOf("<!-- plugin description -->")

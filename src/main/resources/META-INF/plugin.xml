@@ -1,6 +1,6 @@
 <idea-plugin>
     <id>com.github.antsrc.ant</id>
-    <name>Ant</name>
+    <name>Ant Language</name>
     <vendor url="https://github.com/ant-src">ant-lang</vendor>
 
     <depends>com.intellij.modules.platform</depends>
