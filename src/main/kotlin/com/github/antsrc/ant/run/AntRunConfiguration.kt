@@ -2,7 +2,9 @@ package com.github.antsrc.ant.run
 
 import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.settings.AntExecutable
+import com.intellij.execution.DefaultExecutionResult
 import com.intellij.execution.ExecutionException
+import com.intellij.execution.ExecutionResult
 import com.intellij.execution.Executor
 import com.intellij.execution.configuration.EnvironmentVariablesData
 import com.intellij.execution.configurations.CommandLineState
@@ -18,6 +20,8 @@ import com.intellij.execution.process.KillableColoredProcessHandler
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessTerminatedListener
 import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.runners.ProgramRunner
+import com.intellij.execution.testframework.sm.SMTestRunnerConnectionUtil
 import com.intellij.openapi.options.SettingsEditor
 import com.intellij.openapi.project.Project
 import com.intellij.util.execution.ParametersListUtil
@@ -35,8 +39,8 @@ class AntRunConfigurationOptions : LocatableRunConfigurationOptions() {
 
 /**
  * Runs `ant run <file> [args...]` (ant-lang.md section 10), or for a test file, whose name ends in
- * `_test.ant`, `ant test [-run pattern] [flags...] <file>` (test.md): the arguments are then flags
- * of `ant test`, such as `-v`.
+ * `_test.ant`, `ant test -json [-run pattern] [flags...] <file>` (test.md), whose results show in
+ * the test tree: the arguments are then flags of `ant test`, such as `-failfast`.
  */
 class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name: String) :
     LocatableConfigurationBase<AntRunConfigurationOptions>(project, factory, name) {
@@ -85,7 +89,8 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
         val ant = AntExecutable.find() ?: throw ExecutionException(AntExecutable.NOT_FOUND)
         val cmd = GeneralCommandLine(ant.toString())
         if (isTest) {
-            cmd.addParameter("test")
+            // The events are what the test tree is built from (AntTestEvents).
+            cmd.addParameters("test", "-json")
             if (testPattern.isNotBlank()) cmd.addParameters("-run", testPattern)
             cmd.addParameters(ParametersListUtil.parse(arguments))
             cmd.addParameter(file)
@@ -133,11 +138,24 @@ class AntRunConfiguration(project: Project, factory: ConfigurationFactory, name:
     /** The standard input file, resolved against the working directory, or null when there is none. */
     private fun stdin(): File? = stdinFile.takeIf { it.isNotBlank() }?.let { File(it).takeIf { f -> f.isAbsolute } ?: File(workingDirectory(), it) }
 
+    /** ant prints path:line:col for an error, which opens the file at the position. */
+    private fun positions() = RegexpFilter(project, "${RegexpFilter.FILE_PATH_MACROS}:${RegexpFilter.LINE_MACROS}:${RegexpFilter.COLUMN_MACROS}")
+
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState {
         return object : CommandLineState(environment) {
             init {
-                // ant prints path:line:col for an error, which opens the file at the position.
-                addConsoleFilters(RegexpFilter(project, "${RegexpFilter.FILE_PATH_MACROS}:${RegexpFilter.LINE_MACROS}:${RegexpFilter.COLUMN_MACROS}"))
+                addConsoleFilters(positions())
+            }
+
+            /** A test file's results go to the test tree, and its other output to the tree's console. */
+            @Throws(ExecutionException::class)
+            override fun execute(executor: Executor, runner: ProgramRunner<*>): ExecutionResult {
+                if (!isTest) return super.execute(executor, runner)
+                val handler = startProcess()
+                val properties = AntTestConsoleProperties(this@AntRunConfiguration, executor, workingDirectory())
+                val console = SMTestRunnerConnectionUtil.createAndAttachConsole(AntTestConsoleProperties.FRAMEWORK, handler, properties)
+                console.addMessageFilter(positions())
+                return DefaultExecutionResult(console, handler, *createActions(console, handler, executor))
             }
 
             @Throws(ExecutionException::class)

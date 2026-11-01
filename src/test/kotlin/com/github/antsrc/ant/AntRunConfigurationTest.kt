@@ -72,10 +72,10 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
         val configuration = type.factory.createTemplateConfiguration(project) as AntRunConfiguration
         configuration.file = "/tmp/dir/stack_test.ant"
-        assertEquals(listOf("test", "/tmp/dir/stack_test.ant"), configuration.commandLine().parametersList.parameters)
+        assertEquals(listOf("test", "-json", "/tmp/dir/stack_test.ant"), configuration.commandLine().parametersList.parameters)
         configuration.testPattern = "^parse$/^0x10$"
         configuration.arguments = "-v"
-        assertEquals("the arguments are flags of ant test", listOf("test", "-run", "^parse$/^0x10$", "-v", "/tmp/dir/stack_test.ant"), configuration.commandLine().parametersList.parameters)
+        assertEquals("the arguments are flags of ant test", listOf("test", "-json", "-run", "^parse$/^0x10$", "-v", "/tmp/dir/stack_test.ant"), configuration.commandLine().parametersList.parameters)
         val attributes = configuration.launchAttributes()
         assertEquals("^parse$/^0x10$", attributes["test"])
         assertFalse("ant dap takes no flags of ant test", attributes.containsKey("args"))
@@ -114,17 +114,31 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
             """.trimIndent(),
         )
         val tests = AntTests.of(file)
+        val parent = "^a\\.b \\(\"c\"\\)$"
         assertEquals(
-            listOf("push=^push$", "a.b (\"c\")=^a\\.b \\(\"c\"\\)$", "0x10=^a\\.b \\(\"c\"\\)$/^0x10( #[0-9]+)?$"),
+            listOf(
+                "push=^push$",
+                "a.b (\"c\")=$parent",
+                "${'$'}{c}=$parent/^.*( #[0-9]+)?$",
+                "hidden=$parent/^.*( #[0-9]+)?$/^hidden( #[0-9]+)?$",
+                "0x10=$parent/^0x10( #[0-9]+)?$",
+            ),
             tests.map { "${it.name}=${it.pattern}" },
         )
+        assertEquals(listOf("push", "a.b (\"c\")", null, null, "a.b (\"c\")/0x10"), tests.map { it.fullName })
         assertEquals(file.text.indexOf("test \"push\""), tests[0].range.startOffset)
         assertEquals(file.text.indexOf("}\n\nfunc") + 1, tests[0].range.endOffset)
         val inner = file.text.indexOf("{}", file.text.indexOf("0x10"))
         assertEquals("0x10", AntTests.around(file, inner)?.name)
-        assertEquals("a.b (\"c\")", AntTests.around(file, file.text.indexOf("hidden"))?.name)
+        assertEquals("hidden", AntTests.around(file, file.text.indexOf("hidden"))?.name)
+        assertEquals("0x10", AntTests.find(file, "a.b (\"c\")/0x10 #2")?.name)
+        assertEquals("hidden", AntTests.find(file, "a.b (\"c\")/x/hidden")?.name)
+        assertEquals("${'$'}{c}", AntTests.find(file, "a.b (\"c\")/x")?.name)
+        assertEquals("push", AntTests.find(file, "push/made in a function")?.name)
+        assertNull(AntTests.find(file, "pop"))
         assertNull(AntTests.around(file, file.text.indexOf("helper")))
         assertEquals("^a\\/b$", AntTests.quote("a/b"))
+        assertEquals("^case .*\\+.*( #[0-9]+)?$", AntTests.template(listOf("case ", "+", ""), subtest = true))
         val plain = myFixture.configureByText("stack.ant", "test \"push\" {}\n")
         assertEquals("only a test file has tests", emptyList<AntTest>(), AntTests.of(plain))
     }
@@ -201,6 +215,134 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
         val contributor = com.github.antsrc.ant.run.AntRunLineMarkerContributor()
         val marked = generateSequence(file.firstChild) { it.nextSibling }.filter { contributor.getInfo(it) != null }
             .map { file.text.substring(it.textRange.startOffset, minOf(it.textRange.startOffset + 11, file.textLength)) }.toList()
-        assertEquals(listOf("import \"lib", "test \"push\"", "test \"pop\" "), marked)
+        assertEquals(listOf("import \"lib", "test \"push\"", "test \"${'$'}{x}\"", "test \"pop\" "), marked)
+    }
+
+    fun testTableCases() {
+        val file = myFixture.configureByText(
+            "sum_test.ant",
+            """
+            test "table" {
+              for { a, b } in cases {
+                test "case ${'$'}{a}+${'$'}{"${'$'}{b}"}" {
+                  assert(sum(a, b) == a + b)
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+        val case = AntTests.of(file)[1]
+        assertEquals("case ${'$'}{a}+${'$'}{\"${'$'}{b}\"}", case.name)
+        assertEquals("^table$/^case .*\\+.*( #[0-9]+)?$", case.pattern)
+        assertTrue(case.fullNames.matches("table/case 1+2 #2"))
+        assertFalse(case.fullNames.matches("table/other"))
+    }
+
+    fun testRowsOfATable() {
+        val file = myFixture.configureByText(
+            "sum_test.ant",
+            """
+            test "table" {
+              type Case = { a: int, b: int, name: string, ok: bool = true }
+              var cases: Array[{ a: int, b: int }] = [
+                Case{ a: 1, b: 2, name: "one" },
+                { a: -3, b: f(1, 2) },
+                Case{ a: 2, b: 3, name: "a/b" },
+              ]
+              for { a, b: second } in cases {
+                test "case ${'$'}{a}+${'$'}{second}" {}
+              }
+              for c in cases {
+                test "${'$'}{c.name}: ${'$'}{c.a}" {}
+              }
+              for c in cases {
+                test "${'$'}{c.a + 1}" {}
+              }
+            }
+            """.trimIndent(),
+        )
+        val rows = AntTests.of(file).filter { it.keyword.text == "Case" || it.keyword.text == "{" }
+        assertEquals(
+            listOf(
+                "case 1+2=^table$/^case 1\\+2( #[0-9]+)?$",
+                "one: 1=^table$/^one: 1( #[0-9]+)?$",
+                "case 2+3=^table$/^case 2\\+3( #[0-9]+)?$",
+                "a/b: 2=^table$/^a\\/b: 2( #[0-9]+)?$",
+            ),
+            rows.map { "${it.name}=${it.pattern}" },
+        )
+        assertEquals("table/case 1+2", rows[0].fullName)
+        val second = file.text.indexOf("Case{ a: 2")
+        assertEquals("the row is a test of its own", "case 2+3", AntTests.at(file.findElementAt(second)!!)?.name)
+        assertEquals("case 1+2", AntTests.find(file, "table/case 1+2 #2")?.name)
+        assertEquals("a row of no known name runs with its template", "case ${'$'}{a}+${'$'}{second}", AntTests.find(file, "table/case -3+7")?.name)
+        val contributor = com.github.antsrc.ant.run.AntRunLineMarkerContributor()
+        assertNotNull(contributor.getInfo(file.findElementAt(second)!!))
+        assertNull("no marker on a row whose name is not known", contributor.getInfo(file.findElementAt(file.text.indexOf("{ a: -3"))!!))
+    }
+}
+
+class AntTestEventsTest : BasePlatformTestCase() {
+    /** What `ant test -json x_test.ant` wrote, run from /w. */
+    private val output = """
+        {"action":"run","file":"x_test.ant","test":"bad"}
+        {"action":"output","file":"x_test.ant","test":"bad","output":"hello\n"}
+        {"action":"fail","file":"x_test.ant","test":"bad","elapsed":0.000060042,"message":"assertion failed: 1 == 2 (1 == 2)\n  at test \"bad\" (x_test.ant:7:9)"}
+        {"action":"run","file":"x_test.ant","test":"table"}
+        {"action":"run","file":"x_test.ant","test":"table/case 1+2"}
+        {"action":"pass","file":"x_test.ant","test":"table/case 1+2","elapsed":0.0021}
+        {"action":"run","file":"x_test.ant","test":"table/a/b"}
+        {"action":"pass","file":"x_test.ant","test":"table/a/b","elapsed":0.000010041}
+        {"action":"run","file":"x_test.ant","test":"table/skipped"}
+        {"action":"skip","file":"x_test.ant","test":"table/skipped","elapsed":0.000012834,"reason":"later"}
+        {"action":"fail","file":"x_test.ant","test":"table","elapsed":0.000154042}
+        {"action":"done","elapsed":0.000706333,"passed":3,"failed":2,"skipped":1}
+    """.trimIndent()
+
+    fun testEventsBecomeServiceMessages() {
+        val events = com.github.antsrc.ant.run.AntTestEvents("/w")
+        val messages = output.lines().flatMap { events.translate(it)!! }.map { jetbrains.buildServer.messages.serviceMessages.ServiceMessage.parse(it)!! }
+        fun show(m: jetbrains.buildServer.messages.serviceMessages.ServiceMessage) =
+            m.messageName + listOf("name", "nodeId", "parentNodeId", "locationHint", "out", "message", "duration")
+                .mapNotNull { k -> m.attributes[k]?.let { "$k=$it" } }.joinToString(" ", " ")
+        assertEquals(
+            listOf(
+                "testStarted name=bad nodeId=1 parentNodeId=0 locationHint=ant:///w/x_test.ant#bad",
+                "testStdOut name=bad nodeId=1 out=hello\n",
+                "testFailed name=bad nodeId=1 message=assertion failed: 1 == 2 (1 == 2)\n  at test \"bad\" (x_test.ant:7:9)",
+                "testFinished name=bad nodeId=1 duration=0",
+                "testStarted name=table nodeId=2 parentNodeId=0 locationHint=ant:///w/x_test.ant#table",
+                "testStarted name=case 1+2 nodeId=3 parentNodeId=2 locationHint=ant:///w/x_test.ant#table/case 1+2",
+                "testFinished name=table/case 1+2 nodeId=3 duration=2",
+                "testStarted name=a/b nodeId=4 parentNodeId=2 locationHint=ant:///w/x_test.ant#table/a/b",
+                "testFinished name=table/a/b nodeId=4 duration=0",
+                "testStarted name=skipped nodeId=5 parentNodeId=2 locationHint=ant:///w/x_test.ant#table/skipped",
+                "testIgnored name=table/skipped nodeId=5 message=later",
+                "testFinished name=table/skipped nodeId=5 duration=0",
+                "testFailed name=table nodeId=2 message=",
+                "testFinished name=table nodeId=2 duration=0",
+            ),
+            messages.map(::show),
+        )
+        assertNull("other output is not an event", events.translate("x_test.ant:1:1: unexpected character"))
+    }
+
+    fun testTree() {
+        val root = com.intellij.execution.testframework.sm.runner.SMTestProxy.SMRootTestProxy()
+        val processor = com.intellij.execution.testframework.sm.runner.GeneralIdBasedToSMTRunnerEventsConvertor(project, root, "Ant")
+        val type = ConfigurationTypeUtil.findConfigurationType(AntRunConfigurationType::class.java)
+        val configuration = type.factory.createTemplateConfiguration(project) as AntRunConfiguration
+        val properties = com.github.antsrc.ant.run.AntTestConsoleProperties(configuration, com.intellij.execution.executors.DefaultRunExecutor.getRunExecutorInstance(), "/w")
+        val converter = properties.createTestEventsConverter("Ant", properties)
+        converter.setProcessor(processor)
+        processor.onStartTesting()
+        for (line in output.lines()) converter.process(line + "\n", com.intellij.execution.process.ProcessOutputTypes.STDOUT)
+        converter.flushBufferOnProcessTermination(1)
+        processor.onFinishTesting()
+        fun show(t: com.intellij.execution.testframework.AbstractTestProxy): String =
+            t.name + ":" + (if (t.isPassed) "passed" else if (t.isIgnored) "ignored" else "failed") +
+                t.children.joinToString(",", "(", ")") { show(it) }.takeIf { t.children.isNotEmpty() }.orEmpty()
+        assertEquals(listOf("bad:failed", "table:failed(case 1+2:passed,a/b:passed,skipped:ignored)"), root.children.map(::show))
+        assertEquals("ant:///w/x_test.ant#table/case 1+2", root.children[1].children[0].locationUrl)
     }
 }

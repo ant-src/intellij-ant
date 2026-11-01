@@ -31,12 +31,17 @@ program reads the console under Run and sees end of file under the debugger.
 ## Test
 
 In a test file, whose name ends in `_test.ant`, `test` is highlighted as a keyword, and the gutter
-shows a run icon on each test whose name is a string without interpolation: Run or Debug there runs
-that test alone, with `ant test -run` or under `ant dap`. Run from the editor runs the test around
-the caret, or all the file's tests outside one. An Ant run configuration on a test file runs
-`ant test`; its Tests to run field is a `-run` pattern, and its program arguments are flags of
-`ant test`, such as `-v`. IDEs whose LSP client shows code lenses (2026.2 does, 2025.3 does not)
-also show the run test and debug test lenses of `ant lsp`, which do the same.
+shows a run icon on each test: Run or Debug there runs that test alone, with `ant test -run` or
+under `ant dap`. On a subtest whose name interpolates, as the cases of a table do, it runs every
+case; and each row of the table gets one of its own, which runs that case alone, when the table is a
+`var` holding an array of record literals, the subtest is right inside a `for` over it, and the name
+interpolates fields of the row whose values are literals. Run from the editor runs the test around
+the caret, or all the file's tests outside one. An Ant run configuration on a test file runs `ant
+test -json` and shows the results in the test tree, subtests under their tests; the gutter icon then
+shows how each test last went, and for a table the worst of its cases. Its Tests to run field is a
+`-run` pattern, and its program arguments are flags of `ant test`, such as `-failfast`. IDEs whose
+LSP client shows code lenses (2026.2 does, 2025.3 does not) also show the run test and debug test
+lenses of `ant lsp`, which do the same.
 
 ## Debug
 
