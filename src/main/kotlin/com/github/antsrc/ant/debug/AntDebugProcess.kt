@@ -244,11 +244,6 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
      * many goroutines does not wait on every stop and step for as many requests.
      */
     private fun suspend(e: StoppedEventArguments) {
-        // Run to Cursor ends at any stop, at its position or before it.
-        runTo?.let { (path, _) ->
-            runTo = null
-            send { sendBreakpoints(path) }
-        }
         val threads = server.threads().await().threads
         val stopping = e.threadId ?: threads.firstOrNull()?.id ?: return
         val stacks = threads.map { t -> AntExecutionStack(t.id, t.name, if (t.id == stopping) framesOf(t.id, 0) else null) }
@@ -263,19 +258,40 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
                 console.print(info?.details?.stackTrace ?: "${info?.description ?: e.description ?: "panic"}\n", ConsoleViewContentType.ERROR_OUTPUT)
                 // The stop is the panic breakpoint's, with its own suspend and log settings.
                 val panic = panicBreakpoints.firstOrNull()
-                if (panic == null) session.positionReached(context) else if (!session.breakpointReached(panic, null, context)) resume(context)
+                if (panic == null) reached(context) else if (!breakpointReached(panic, null, context)) resume(context)
             }
             "breakpoint" -> {
                 val hit = top?.source?.path?.let { breakpoints[FileUtil.toSystemIndependentName(it)] }?.firstOrNull { (boundLines[it] ?: it.line + 1) == top.line }
                 if (hit == null) {
-                    session.positionReached(context)
+                    reached(context)
                 } else {
                     // A breakpoint that suspends logs its expression here; one that does not logs it through ant dap (sourceBreakpoint).
                     val logged = hit.logExpressionObject?.expression?.takeIf { it.isNotBlank() }?.let { evaluateToText(it, top.id) }
-                    if (!session.breakpointReached(hit, logged, context)) resume(context)
+                    if (!breakpointReached(hit, logged, context)) resume(context)
                 }
             }
-            else -> session.positionReached(context)
+            else -> reached(context)
+        }
+    }
+
+    /** The program stops at a position that is no breakpoint's. */
+    private fun reached(context: XSuspendContext) {
+        endRunTo()
+        session.positionReached(context)
+    }
+
+    /** A breakpoint is reached; whether the program stays stopped, as its suspend policy says. */
+    private fun breakpointReached(breakpoint: XBreakpoint<*>, logged: String?, context: XSuspendContext): Boolean =
+        session.breakpointReached(breakpoint, logged, context).also { if (it) endRunTo() }
+
+    /**
+     * Run to Cursor ends when the program stays stopped, at its position or before it; a
+     * breakpoint that only logs, which the program goes on from, leaves it to run on.
+     */
+    private fun endRunTo() {
+        runTo?.let { (path, _) ->
+            runTo = null
+            send { sendBreakpoints(path) }
         }
     }
 

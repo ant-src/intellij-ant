@@ -5,7 +5,7 @@ import com.google.gson.JsonParser
 import com.intellij.execution.Executor
 import com.intellij.execution.Location
 import com.intellij.execution.PsiLocation
-import com.intellij.execution.process.ProcessOutputTypes
+import com.intellij.execution.process.ProcessOutputType
 import com.intellij.execution.testframework.TestConsoleProperties
 import com.intellij.execution.testframework.sm.SMCustomMessagesParsing
 import com.intellij.execution.testframework.sm.ServiceMessageBuilder
@@ -64,7 +64,7 @@ class AntTestEventsConverter(testFrameworkName: String, consoleProperties: TestC
     private val events = AntTestEvents(directory)
 
     override fun processServiceMessages(text: String, outputType: Key<*>, visitor: ServiceMessageVisitor): Boolean {
-        if (outputType != ProcessOutputTypes.STDOUT) return super.processServiceMessages(text, outputType, visitor)
+        if (!ProcessOutputType.isStdout(outputType)) return super.processServiceMessages(text, outputType, visitor)
         val messages = events.translate(text) ?: return super.processServiceMessages(text, outputType, visitor)
         for (message in messages) super.processServiceMessages(message, outputType, visitor)
         return true

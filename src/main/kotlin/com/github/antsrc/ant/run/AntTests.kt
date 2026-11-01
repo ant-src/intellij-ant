@@ -120,9 +120,8 @@ object AntTests {
                     val frame = stack.removeLastOrNull()
                     if (frame is Frame.Test) {
                         val start = frame.keyword.textRange.startOffset
-                        val fullNames = Regex(frame.levels.joinToString("/") { it.removePrefix("^").removeSuffix("$") })
                         val range = TextRange(start, token.textRange.endOffset)
-                        out.add(AntTest(frame.keyword, frame.name, frame.levels.joinToString("/"), range, frame.fullName, fullNames, frame.levels.size - 1))
+                        out.add(AntTest(frame.keyword, frame.name, frame.levels.joinToString("/"), range, frame.fullName, fullNamesOf(frame.levels), frame.levels.size - 1))
                         if (frame.header.parts.size > 1) out.addAll(cases(tokens, frame))
                     }
                 }
@@ -228,26 +227,42 @@ object AntTests {
                 else -> null
             } ?: return emptyList()
         }
-        val declaration = (loop - 1 downTo 1).firstOrNull {
-            tokens[it].text == table && tokens[it - 1].text == "var" && tokens[it - 1].node.elementType == AntTokenTypes.KEYWORD
-        } ?: return emptyList()
+        val declaration = declaration(tokens, loop, table) ?: return emptyList()
         val array = valueOf(tokens, declaration + 1) ?: return emptyList()
         if (tokens[array].node.elementType != AntTokenTypes.LBRACKET) return emptyList()
         val out = ArrayList<AntTest>()
         for (row in elements(tokens, array)) {
             val values = record(tokens, row) ?: continue
+            if (fields.any { values[it] == null }) continue
             val name = buildString {
                 for ((k, part) in test.header.parts.withIndex()) {
                     append(part)
-                    if (k < fields.size) append(values[fields[k]] ?: return@buildString)
+                    if (k < fields.size) append(values[fields[k]])
                 }
-            }.takeIf { fields.all { values[it] != null } } ?: continue
+            }
             val levels = test.levels.dropLast(1) + quote(name, subtest = true)
             val range = TextRange(tokens[row.first].textRange.startOffset, tokens[row.last].textRange.endOffset)
-            val fullNames = Regex(levels.joinToString("/") { it.removePrefix("^").removeSuffix("$") })
-            out.add(AntTest(tokens[row.first], name, levels.joinToString("/"), range, test.parentFullName?.let { "$it/$name" }, fullNames, levels.size - 1))
+            out.add(AntTest(tokens[row.first], name, levels.joinToString("/"), range, test.parentFullName?.let { "$it/$name" }, fullNamesOf(levels), levels.size - 1))
         }
         return out
+    }
+
+    /** What matches the full names a test of these -run levels runs under. */
+    private fun fullNamesOf(levels: List<String>) = Regex(levels.joinToString("/") { it.removePrefix("^").removeSuffix("$") })
+
+    /**
+     * The index of the name of the `var` named name that is in scope at the token at i: in a
+     * block around it or at the top level, before it, the nearest; not one inside another block.
+     */
+    private fun declaration(tokens: List<PsiElement>, i: Int, name: String): Int? {
+        var depth = 0
+        for (j in i - 1 downTo 1) {
+            val type = tokens[j].node.elementType
+            if (type in CLOSERS) depth++
+            if (type in OPENERS && depth > 0) depth--
+            if (depth == 0 && tokens[j].text == name && tokens[j - 1].text == "var" && tokens[j - 1].node.elementType == AntTokenTypes.KEYWORD) return j
+        }
+        return null
     }
 
     private val OPENERS = setOf(AntTokenTypes.LBRACE, AntTokenTypes.LPAREN, AntTokenTypes.LBRACKET, AntTokenTypes.INTERPOLATION_START, AntTokenTypes.STRING_START)

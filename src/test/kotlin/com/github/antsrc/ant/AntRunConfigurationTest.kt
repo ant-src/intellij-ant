@@ -280,6 +280,30 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
         assertNotNull(contributor.getInfo(file.findElementAt(second)!!))
         assertNull("no marker on a row whose name is not known", contributor.getInfo(file.findElementAt(file.text.indexOf("{ a: -3"))!!))
     }
+
+    fun testTheTableInScope() {
+        val file = myFixture.configureByText(
+            "scope_test.ant",
+            """
+            var cases = [{ n: 1 }]
+
+            test "a" {
+              var cases = [{ n: 2 }]
+              for c in cases {
+                test "a ${'$'}{c.n}" {}
+              }
+            }
+
+            test "b" {
+              for c in cases {
+                test "b ${'$'}{c.n}" {}
+              }
+            }
+            """.trimIndent(),
+        )
+        val rows = AntTests.of(file).filter { it.keyword.text == "{" }.map { it.pattern }
+        assertEquals("each template's rows are of the table in its scope", listOf("^b$/^b 1( #[0-9]+)?$", "^a$/^a 2( #[0-9]+)?$"), rows)
+    }
 }
 
 class AntTestEventsTest : BasePlatformTestCase() {
