@@ -211,12 +211,21 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
     /** Whether the run has ended, or was told to end: ant dap's own exit is then expected, not news. */
     @Volatile private var ended = false
 
+    /**
+     * The position Run to Cursor runs to, as a path and a 0-based line: ant dap has no request
+     * for it, so it is a breakpoint of its own, sent with the file's others until the next stop.
+     */
+    @Volatile private var runTo: Pair<String, Int>? = null
+
     /** Sends the breakpoints of one file, keeps the lines ant dap bound them to, and shows which it could not bind. */
     private fun sendBreakpoints(path: String) {
         val bps = breakpoints[path]?.toList() ?: emptyList()
+        val target = runTo?.takeIf { it.first == path }?.second
         val response = server.setBreakpoints(SetBreakpointsArguments().apply {
             source = Source().apply { this.path = path }
-            breakpoints = bps.map { sourceBreakpoint(it.line, it.conditionExpression?.expression, it.logExpressionObject?.expression, it.suspendPolicy) }.toTypedArray()
+            val sent = bps.map { sourceBreakpoint(it.line, it.conditionExpression?.expression, it.logExpressionObject?.expression, it.suspendPolicy) }
+            // Run to Cursor's breakpoint goes last, so that the response's first ones are the file's own.
+            breakpoints = (if (target == null) sent else sent + sourceBreakpoint(target, null, null, SuspendPolicy.ALL)).toTypedArray()
         }).await()
         response.breakpoints.zip(bps).forEach { (result, bp) ->
             if (result.isVerified) {
@@ -235,6 +244,11 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
      * many goroutines does not wait on every stop and step for as many requests.
      */
     private fun suspend(e: StoppedEventArguments) {
+        // Run to Cursor ends at any stop, at its position or before it.
+        runTo?.let { (path, _) ->
+            runTo = null
+            send { sendBreakpoints(path) }
+        }
         val threads = server.threads().await().threads
         val stopping = e.threadId ?: threads.firstOrNull()?.id ?: return
         val stacks = threads.map { t -> AntExecutionStack(t.id, t.name, if (t.id == stopping) framesOf(t.id, 0) else null) }
@@ -307,6 +321,19 @@ class AntDebugProcess(session: XDebugSession, private val configuration: AntRunC
 
     override fun startStepOut(context: XSuspendContext?) = send {
         server.stepOut(StepOutArguments().apply { threadId = threadOf(context) }).await()
+    }
+
+    /**
+     * Run to Cursor: a breakpoint at the position, until the program next stops, and continue. A
+     * stop there that is no breakpoint of the user's is shown as a position reached.
+     */
+    override fun runToPosition(position: XSourcePosition, context: XSuspendContext?) = send {
+        val path = FileUtil.toSystemIndependentName(position.file.path)
+        val previous = runTo
+        runTo = path to position.line
+        if (previous != null && previous.first != path) sendBreakpoints(previous.first)
+        sendBreakpoints(path)
+        server.continue_(ContinueArguments().apply { threadId = threadOf(context) }).await()
     }
 
     override fun startPausing() = send {
