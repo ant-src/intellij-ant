@@ -220,6 +220,9 @@ class AntLexer(private val testFile: Boolean = false) : LexerBase() {
         if (ch(pos) == '0' && ch(pos + 1) == 'x') {
             pos += 2
             while (isHex(ch(pos)) || ch(pos) == '_') pos++
+        } else if (ch(pos) == '0' && ch(pos + 1) == 'o') {
+            pos += 2
+            while (ch(pos) in '0'..'7' || ch(pos) == '_') pos++
         } else if (ch(pos) == '0' && ch(pos + 1) == 'b') {
             pos += 2
             while (ch(pos) == '0' || ch(pos) == '1' || ch(pos) == '_') pos++

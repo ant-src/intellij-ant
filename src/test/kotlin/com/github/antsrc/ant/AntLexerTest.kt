@@ -54,6 +54,7 @@ class AntLexerTest {
         assertEquals(T.INT, typeOf("var n = 1_000_000", "1_000_000"))
         assertEquals(T.INT, typeOf("var n = 0xFF", "0xFF"))
         assertEquals(T.INT, typeOf("var n = 0b1010", "0b1010"))
+        assertEquals(T.INT, typeOf("var n = 0o755", "0o755"))
         assertEquals(T.FLOAT, typeOf("var n = 2.5e-3", "2.5e-3"))
         assertEquals(T.FLOAT, typeOf("var n = 1e9", "1e9"))
         assertEquals(T.FLOAT, typeOf("var n = 3.14", "3.14"))
