@@ -183,6 +183,18 @@ class AntRunConfigurationTest : BasePlatformTestCase() {
         assertEquals(file.virtualFile.path, configuration.file)
         assertEquals("main.ant", configuration.name)
         assertTrue(configuration.workingDirectory.isNotEmpty())
+
+        val library = myFixture.addFileToProject("dir/lib.ant", "export func f(): int { 1 }\n")
+        val libraryContext = ConfigurationContext.getFromContext(
+            com.intellij.openapi.actionSystem.impl.SimpleDataContext.builder()
+                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PROJECT, project)
+                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_FILE, library)
+                .add(com.intellij.openapi.actionSystem.CommonDataKeys.PSI_ELEMENT, library.firstChild)
+                .add(com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE, library.virtualFile)
+                .build(),
+            "test",
+        )
+        assertTrue("a library has nothing to run", libraryContext.configurationsFromContext.isNullOrEmpty())
     }
 
     fun testExecutableDetection() {
@@ -208,6 +220,27 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
         val contributor = com.github.antsrc.ant.run.AntRunLineMarkerContributor()
         val marked = generateSequence(file.firstChild) { it.nextSibling }.filter { contributor.getInfo(it) != null }.map { it.text }.toList()
         assertEquals(listOf("func"), marked)
+    }
+
+    fun testNoMarkerOnALibrary() {
+        val file = myFixture.configureByText("lib.ant", "//! A library.\n\nexport func f(): int { 1 }\n")
+        val contributor = com.github.antsrc.ant.run.AntRunLineMarkerContributor()
+        assertTrue(generateSequence(file.firstChild) { it.nextSibling }.none { contributor.getInfo(it) != null })
+    }
+
+    fun testScripts() {
+        var n = 0
+        fun script(text: String) = com.github.antsrc.ant.run.AntScripts.isScript(myFixture.configureByText("m${++n}.ant", text) as com.github.antsrc.ant.psi.AntFile)
+        assertTrue(script("println(1)\n"))
+        assertTrue(script("#!/usr/bin/env ant\nfunc f(): int { 1 }\n"))
+        assertTrue(script("import \"./a.ant\" { a }\n\nvar x = 1\nfor i in [1] {\n  println(i)\n}\n"))
+        assertTrue(script("var page = <div>\n  hello\n</div>\nprintln(page)\n"))
+        assertFalse(script(""))
+        assertFalse(script("// only a comment\n"))
+        assertFalse(script("import \"./a.ant\" { a }\n\nexport func f(x: int): int {\n  println(x)\n  x\n}\n"))
+        assertFalse(script("var total =\n  1 +\n  2\nvar names = [1, 2]\n  |> List.map(f)\n  .len()\nexport type T = {\n  a: int,\n}\n"))
+        assertFalse(script("var page = <div>\n  hello {name}\n</div>\n"))
+        assertFalse(script("func f(): void {\n  if true {\n  }\n  else {\n  }\n}\n"))
     }
 
     fun testMarkersOnTests() {

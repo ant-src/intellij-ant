@@ -24,7 +24,8 @@ another one.
 
 ## Run
 
-Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file. The
+Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file. Only a
+script, a file with a statement at its top level, has the run icon; a library has nothing to run. The
 run configuration can name a file whose contents are the program's standard input; without one, the
 program reads the console under Run and sees end of file under the debugger.
 

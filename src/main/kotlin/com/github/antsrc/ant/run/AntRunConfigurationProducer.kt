@@ -1,5 +1,6 @@
 package com.github.antsrc.ant.run
 
+import com.github.antsrc.ant.AntFileType
 import com.github.antsrc.ant.psi.AntFile
 import com.intellij.execution.actions.ConfigurationContext
 import com.intellij.execution.actions.LazyRunConfigurationProducer
@@ -13,7 +14,8 @@ import com.intellij.psi.PsiElement
 
 /**
  * Run 'file.ant' from the editor or the project view. In a test file, a test's `test` or a place
- * inside its body runs that test, and anywhere else every test of the file.
+ * inside its body runs that test, and anywhere else every test of the file. A library, neither a
+ * script nor a test file, has nothing to run (AntScripts).
  */
 class AntRunConfigurationProducer : LazyRunConfigurationProducer<AntRunConfiguration>() {
     override fun getConfigurationFactory(): ConfigurationFactory =
@@ -22,6 +24,7 @@ class AntRunConfigurationProducer : LazyRunConfigurationProducer<AntRunConfigura
     override fun setupConfigurationFromContext(configuration: AntRunConfiguration, context: ConfigurationContext, sourceElement: Ref<PsiElement>): Boolean {
         val location = context.psiLocation ?: return false
         val file = location.containingFile as? AntFile ?: return false
+        if (!AntFileType.isTestFile(file.name) && !AntScripts.isScript(file)) return false
         val virtualFile = file.virtualFile?.takeIf { it.isInLocalFileSystem } ?: return false
         val test = testAt(location)
         configure(configuration, context.project, virtualFile, test)

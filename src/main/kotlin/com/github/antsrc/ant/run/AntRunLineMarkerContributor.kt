@@ -13,8 +13,8 @@ import com.intellij.psi.impl.source.tree.LeafPsiElement
 import javax.swing.Icon
 
 /**
- * The run icon in the gutter: on the first token of an Ant file that is code, not a comment, not
- * white space; and in a test file on the `test` of each test (AntTests), which runs or debugs that
+ * The run icon in the gutter: on the first token of a script or a test file that is code, not a
+ * comment, not white space, since a library has nothing to run (AntScripts); and in a test file on the `test` of each test (AntTests), which runs or debugs that
  * test alone, or every case of a subtest whose name interpolates, and shows how it last went.
  */
 class AntRunLineMarkerContributor : RunLineMarkerContributor() {
@@ -28,7 +28,12 @@ class AntRunLineMarkerContributor : RunLineMarkerContributor() {
             if (isCode(prev)) return null
             prev = prev.prevSibling
         }
-        val tooltip = if (AntFileType.isTestFile(element.containingFile.name)) "Run the file's tests" else "Run with ant"
+        val file = element.containingFile as AntFile
+        val tooltip = when {
+            AntFileType.isTestFile(file.name) -> "Run the file's tests"
+            AntScripts.isScript(file) -> "Run with ant"
+            else -> return null
+        }
         return Info(AllIcons.RunConfigurations.TestState.Run, ExecutorAction.getActions(0)) { tooltip }
     }
 
