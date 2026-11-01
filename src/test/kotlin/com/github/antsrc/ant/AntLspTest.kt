@@ -132,6 +132,27 @@ class AntLspTest : BasePlatformTestCase() {
         }
         assertTrue(results.joinToString("\n"), results.none { "MISSING" in it })
 
+        // Alt+Enter on a name another module exports imports it, and so does completing it.
+        val use = File(dir, "use.ant").apply { writeText("println(twice(2))\n") }
+        val useFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(use)!!
+        myFixture.openFileInEditor(useFile)
+        waitFor("diagnostics for use.ant") { events.contains("diagnostics use.ant") }
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
+        myFixture.doHighlighting()
+        myFixture.editor.caretModel.moveToOffset(myFixture.editor.document.text.indexOf("twice") + 1)
+        val intentions = myFixture.availableIntentions
+        val fix = intentions.firstOrNull { it.text == "Import twice from \"./lib/util.ant\"" } ?: throw AssertionError("no import fix in ${intentions.map { it.text }}")
+        myFixture.launchAction(fix)
+        assertEquals("import \"./lib/util.ant\" { twice }\n\nprintln(twice(2))\n", myFixture.editor.document.text)
+        val complete = File(dir, "complete.ant").apply { writeText("var n = twi\n") }
+        val completeFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(complete)!!
+        myFixture.openFileInEditor(completeFile)
+        waitFor("diagnostics for complete.ant") { events.contains("diagnostics complete.ant") }
+        myFixture.editor.caretModel.moveToOffset("var n = twi".length)
+        val imported = myFixture.completeBasic()
+        imported?.firstOrNull { it.lookupString == "twice" }?.let { myFixture.lookup.currentItem = it; myFixture.finishLookup('\n') }
+        assertEquals("import \"./lib/util.ant\" { twice }\n\nvar n = twice\n", myFixture.editor.document.text)
+
         // The server offers inlay hints; the plugin shows none.
         val hints = File(dir, "hints.ant").apply { writeText("var count = 1\nprintln(count)\n") }
         val hintsFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(hints)!!
