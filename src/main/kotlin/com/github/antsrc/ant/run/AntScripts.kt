@@ -16,10 +16,10 @@ import com.intellij.psi.util.PsiTreeUtil
  * runs; any other module is a library (ant-lang.md section 10, Scripts). A test file never is one.
  * The file's tokens are flat, so a top-level item is a token at no depth of brackets that begins a
  * line the line before does not continue; it is a statement unless it begins with `import`,
- * `export`, `func`, `type`, or `var`. A file with a `#!` line is taken for a script too.
+ * `export`, `func`, `type`, `var`, or `let`. A file with a `#!` line is taken for a script too.
  */
 object AntScripts {
-    private val DECLARATIONS = setOf("import", "export", "func", "type", "var")
+    private val DECLARATIONS = setOf("import", "export", "func", "type", "var", "let")
 
     /** What ends a line that the next one continues. */
     private val CONTINUES = TokenSet.create(

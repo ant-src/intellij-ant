@@ -237,6 +237,7 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
         assertTrue(script("var page = <div>\n  hello\n</div>\nprintln(page)\n"))
         assertFalse(script(""))
         assertFalse(script("// only a comment\n"))
+        assertFalse(script("export let LIMIT = 10\nlet origin = 0\n"))
         assertFalse(script("import \"./a.ant\" { a }\n\nexport func f(x: int): int {\n  println(x)\n  x\n}\n"))
         assertFalse(script("var total =\n  1 +\n  2\nvar names = [1, 2]\n  |> List.map(f)\n  .len()\nexport type T = {\n  a: int,\n}\n"))
         assertFalse(script("var page = <div>\n  hello {name}\n</div>\n"))
@@ -277,7 +278,7 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
             """
             test "table" {
               type Case = { a: int, b: int, name: string, ok: bool = true }
-              var cases: Array[{ a: int, b: int }] = [
+              let cases: Array[{ a: int, b: int }] = [
                 Case{ a: 1, b: 2, name: "one" },
                 { a: -3, b: f(1, 2) },
                 Case{ a: 2, b: 3, name: "a/b" },

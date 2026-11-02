@@ -251,7 +251,7 @@ object AntTests {
     private fun fullNamesOf(levels: List<String>) = Regex(levels.joinToString("/") { it.removePrefix("^").removeSuffix("$") })
 
     /**
-     * The index of the name of the `var` named name that is in scope at the token at i: in a
+     * The index of the name of the `var` or `let` named name that is in scope at the token at i: in a
      * block around it or at the top level, before it, the nearest; not one inside another block.
      */
     private fun declaration(tokens: List<PsiElement>, i: Int, name: String): Int? {
@@ -260,11 +260,12 @@ object AntTests {
             val type = tokens[j].node.elementType
             if (type in CLOSERS) depth++
             if (type in OPENERS && depth > 0) depth--
-            if (depth == 0 && tokens[j].text == name && tokens[j - 1].text == "var" && tokens[j - 1].node.elementType == AntTokenTypes.KEYWORD) return j
+            if (depth == 0 && tokens[j].text == name && tokens[j - 1].text in BINDERS && tokens[j - 1].node.elementType == AntTokenTypes.KEYWORD) return j
         }
         return null
     }
 
+    private val BINDERS = setOf("var", "let")
     private val OPENERS = setOf(AntTokenTypes.LBRACE, AntTokenTypes.LPAREN, AntTokenTypes.LBRACKET, AntTokenTypes.INTERPOLATION_START, AntTokenTypes.STRING_START)
     private val CLOSERS = setOf(AntTokenTypes.RBRACE, AntTokenTypes.RPAREN, AntTokenTypes.RBRACKET, AntTokenTypes.INTERPOLATION_END, AntTokenTypes.STRING_END)
 
