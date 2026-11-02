@@ -78,11 +78,11 @@ object AntTokenTypes {
 
     val KEYWORDS = setOf(
         "break", "continue", "defer", "else", "export", "false", "for", "func", "go", "if", "import",
-        "in", "is", "null", "return", "select", "true", "try", "type", "var", "void", "while",
+        "in", "is", "let", "null", "return", "select", "true", "try", "type", "var", "void", "while",
     )
     val RESERVED_WORDS = setOf(
         "as", "async", "await", "catch", "class", "const", "enum", "finally", "function", "interface",
-        "let", "match", "switch", "this", "throw", "undefined",
+        "match", "switch", "this", "throw", "undefined",
     )
     val LITERAL_KEYWORDS = setOf("true", "false", "null")
 }
