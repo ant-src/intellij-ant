@@ -18,6 +18,8 @@ class AntLexerTest {
         assertEquals(T.IDENTIFIER, typeOf("var t = { type: string }", "type"))
         assertEquals(T.IDENTIFIER, typeOf("Map{ class: \"a\" }", "class"))
         assertEquals(T.IDENTIFIER, typeOf("f(type: 1)", "type"))
+        // a type expression keeps type a keyword (section 4, Types as values)
+        assertEquals("KEYWORD(type) LPAREN(() IDENTIFIER(Array) LBRACKET([) IDENTIFIER(int) RBRACKET(]) PIPE(|) LITERAL_KEYWORD(null) RPAREN())", shape("type(Array[int] | null)"))
         assertEquals(T.KEYWORD, typeOf("let x = 1", "let"))
         assertEquals(T.RESERVED, typeOf("const x = 1", "const"))
         assertEquals(T.RESERVED, typeOf("x = await y", "await"))
