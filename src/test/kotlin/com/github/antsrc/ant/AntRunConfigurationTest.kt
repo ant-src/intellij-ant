@@ -241,6 +241,10 @@ class AntRunLineMarkerTest : BasePlatformTestCase() {
         assertFalse(script("import \"./a.ant\" { a }\n\nexport func f(x: int): int {\n  println(x)\n  x\n}\n"))
         assertFalse(script("var total =\n  1 +\n  2\nvar names = [1, 2]\n  |> List.map(f)\n  .len()\nexport type T = {\n  a: int,\n}\n"))
         assertFalse(script("var page = <div>\n  hello {name}\n</div>\n"))
+        // markup content and a start tag's attributes are no statements, even at the start of a line
+        assertFalse(script("export func f(): int { 1 }\nvar page = <ul>\n  {items}\n</ul>\n"))
+        assertFalse(script("var page = <div\n  {...attrs}\n  class=\"a\"\n>\n  <br />\n  <>\n    {x}\n  </>\n</div>\n"))
+        assertTrue(script("var page = <ul>\n  <li\n    {...attrs}\n  />\n  {items}\n</ul>\nprintln(page)\n"))
         assertFalse(script("func f(): void {\n  if true {\n  }\n  else {\n  }\n}\n"))
     }
 

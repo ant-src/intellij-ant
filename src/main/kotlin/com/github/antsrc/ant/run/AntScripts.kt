@@ -16,7 +16,8 @@ import com.intellij.psi.util.PsiTreeUtil
  * runs; any other module is a library (ant-lang.md section 10, Scripts). A test file never is one.
  * The file's tokens are flat, so a top-level item is a token at no depth of brackets that begins a
  * line the line before does not continue; it is a statement unless it begins with `import`,
- * `export`, `func`, `type`, `var`, or `let`. A file with a `#!` line is taken for a script too.
+ * `export`, `func`, `type`, `var`, or `let`. Nor is anything inside markup, a start tag's
+ * attributes included, a statement. A file with a `#!` line is taken for a script too.
  */
 object AntScripts {
     private val DECLARATIONS = setOf("import", "export", "func", "type", "var", "let")
@@ -56,6 +57,9 @@ object AntScripts {
     private fun compute(file: AntFile): Boolean {
         if (AntFileType.isTestFile(file.name)) return false
         var depth = 0
+        // markup counts the elements open around a token: a start tag opens one, and an end tag or
+        // a self-closing tag's /> closes it.
+        var markup = 0
         var newLine = true
         var last: PsiElement? = null
         var leaf: PsiElement? = file.firstChild?.let(PsiTreeUtil::firstChild)
@@ -66,12 +70,14 @@ object AntScripts {
                 leaf is PsiWhiteSpace || type == TokenType.WHITE_SPACE -> if ('\n' in leaf.text) newLine = true
                 type in AntTokenTypes.COMMENTS -> if (type == AntTokenTypes.LINE_COMMENT) newLine = true
                 else -> {
-                    val starts = depth == 0 && newLine && type !in MARKUP && type !in CONTINUATIONS &&
+                    val starts = depth == 0 && markup == 0 && newLine && type !in MARKUP && type !in CONTINUATIONS &&
                         last?.node?.elementType.let { it == null || it !in CONTINUES } &&
                         !(type == AntTokenTypes.KEYWORD && leaf.text == "else")
                     if (starts && !(type == AntTokenTypes.KEYWORD && leaf.text in DECLARATIONS)) return true
                     if (type in OPEN) depth++
                     if (type in CLOSE && depth > 0) depth--
+                    if (type == AntTokenTypes.TAG_OPEN) markup++
+                    if ((type == AntTokenTypes.TAG_SELF_CLOSE || type == AntTokenTypes.END_TAG_OPEN) && markup > 0) markup--
                     newLine = false
                     last = leaf
                 }
