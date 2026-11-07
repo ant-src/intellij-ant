@@ -1,0 +1,13 @@
+<idea-plugin>
+    <!-- Not shipped: the build installs it beside the Ant plugin to run ant-classes (ClassesProbe). -->
+    <id>com.github.antsrc.ant.probe</id>
+    <name>Ant Classes Probe</name>
+    <vendor>ant-lang</vendor>
+    <idea-version since-build="253"/>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <appStarter id="ant-classes" implementation="com.github.antsrc.ant.probe.ClassesProbe"/>
+    </extensions>
+</idea-plugin>

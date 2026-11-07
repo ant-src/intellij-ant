@@ -11,6 +11,10 @@ plugins {
 group = "com.github.antsrc"
 version = "0.1.0"
 
+// The oldest IDE the plugin supports, which it compiles against, and the newest the build checks it on.
+val oldestIde = "2025.3"
+val newestIde = "2026.3"
+
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -23,7 +27,7 @@ dependencies {
         // The oldest platform the plugin supports, and the first with the IDE's LSP client
         // complete enough for Ant (signature help, structure view, selection range); the
         // verifier checks the newer ones below.
-        intellijIdea("2025.3")
+        intellijIdea(oldestIde)
         testFramework(TestFrameworkType.Platform)
     }
     // From 2026.3 the IDE keeps lsp4j's debug protocol in a library module that a plugin sees only
@@ -89,9 +93,42 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            create(IntelliJPlatformType.IntellijIdea, "2026.2.3")
+            create(IntelliJPlatformType.IntellijIdea, newestIde)
         }
     }
+}
+
+// The classes probe: a plugin, never shipped, whose ant-classes command loads every class the Ant
+// plugin refers to through the plugin's own class loader, in a real IDE (see ClassesProbe). The
+// tests cannot catch a class an installed plugin does not see, as they load it on one class path.
+val probe = sourceSets.create("probe") {
+    compileClasspath += sourceSets.main.get().compileClasspath
+}
+val probeJar = tasks.register<Jar>("probeJar") {
+    // Its plugin.xml stays out of the source set's resources, where the Ant plugin's patched one goes.
+    from(probe.output.classesDirs)
+    from(layout.projectDirectory.dir("src/probe/plugin"))
+    archiveBaseName = "ant-classes-probe"
+}
+val probeRuns = listOf(oldestIde, newestIde).map { ide ->
+    intellijPlatformTesting.runIde.register("checkClassLoading-$ide") {
+        type = IntelliJPlatformType.IntellijIdea
+        version = ide
+        // The probe goes into the sandbox's plugins beside the Ant plugin.
+        prepareSandboxTask {
+            from(probeJar) { into("ant-classes-probe/lib") }
+        }
+        task {
+            args("ant-classes")
+            jvmArgumentProviders += CommandLineArgumentProvider { listOf("-Djava.awt.headless=true") }
+        }
+    }
+}
+// Runs ant-classes in the oldest and the newest IDE the plugin supports; fails when a class does not load.
+tasks.register("checkClassLoading") {
+    group = "verification"
+    description = "Loads every class the plugin refers to through its own class loader in real IDEs."
+    dependsOn(probeRuns.map { run -> run.map { it.task } })
 }
 
 // The end-to-end tests start the real language server. ANT_PATH names the executable; without

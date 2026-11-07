@@ -58,8 +58,9 @@ Process ends it at once.
 ## Development
 
 ```sh
-./gradlew test          # lexer, editing, run configuration, debugger, and language server tests; needs ../ant or ANT_PATH
-./gradlew runIde        # an IDE with the plugin
-./gradlew buildPlugin   # build/distributions/intellij-ant-<version>.zip
-./gradlew verifyPlugin  # compatibility with the IDEs in build.gradle.kts
+./gradlew test              # lexer, editing, run configuration, debugger, and language server tests; needs ../ant or ANT_PATH
+./gradlew runIde            # an IDE with the plugin
+./gradlew buildPlugin       # build/distributions/intellij-ant-<version>.zip
+./gradlew verifyPlugin      # compatibility with the IDEs in build.gradle.kts
+./gradlew checkClassLoading # the classes the plugin refers to load in the oldest and newest IDE
 ```
