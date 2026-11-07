@@ -10,10 +10,11 @@ import java.nio.file.Path
 
 /**
  * Finds the `ant` executable: the one the settings name, then `ant` on PATH, then in `$GOBIN`,
- * then in the `bin` directory of `go env GOPATH`, then in `~/go/bin`. A hit is kept until the
- * setting changes; a miss only briefly, so that the search, which runs `go env`, is not repeated
- * for every file opened, while an `ant` installed later is still found. A script named `ant`,
- * such as Apache Ant's launcher, is passed over: the Ant command is a compiled program.
+ * then in the `bin` directory of the first `go env GOPATH` entry, then in `~/go/bin`. A hit is
+ * kept until the setting changes; a miss only briefly, so that the search, which runs `go env`, is
+ * not repeated for every file opened, while an `ant` installed later is still found. A script
+ * named `ant`, such as Apache Ant's launcher, is passed over: the Ant command is a compiled
+ * program.
  */
 object AntExecutable {
     @Volatile private var cached: Path? = null
@@ -51,7 +52,8 @@ object AntExecutable {
 
     private fun goPath(): String? = try {
         val output = ExecUtil.execAndGetOutput(GeneralCommandLine("go", "env", "GOPATH"), 5000)
-        output.stdout.trim().takeIf { output.exitCode == 0 && it.isNotEmpty() }
+        // GOPATH may list several directories; go install puts binaries in the first one's bin.
+        output.stdout.trim().split(File.pathSeparatorChar).first().takeIf { output.exitCode == 0 && it.isNotEmpty() }
     } catch (e: Exception) {
         null
     }
