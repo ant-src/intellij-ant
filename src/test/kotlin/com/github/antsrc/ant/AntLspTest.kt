@@ -151,7 +151,7 @@ class AntLspTest : BasePlatformTestCase() {
         myFixture.editor.caretModel.moveToOffset("var n = twi".length)
         val imported = myFixture.completeBasic()
         imported?.firstOrNull { it.lookupString == "twice" }?.let { myFixture.lookup.currentItem = it; myFixture.finishLookup('\n') }
-        assertEquals("import \"./lib/util.ant\" { twice }\n\nvar n = twice\n", myFixture.editor.document.text)
+        assertEquals("import \"./lib/util.ant\" { twice }\n\nvar n = twice()\n", myFixture.editor.document.text)
 
         // The server offers inlay hints; the plugin shows none.
         val hints = File(dir, "hints.ant").apply { writeText("var count = 1\nprintln(count)\n") }
