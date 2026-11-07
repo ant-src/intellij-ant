@@ -26,6 +26,15 @@ dependencies {
         intellijIdea("2025.3")
         testFramework(TestFrameworkType.Platform)
     }
+    // From 2026.3 the IDE keeps lsp4j's debug protocol in a library module that a plugin sees only
+    // by declaring it, a module older IDEs lack; so the plugin ships it. Its jsonrpc stays the IDE's
+    // (0.21 in 2025.3, 1.0 in 2026.3), so the bundled version is 2025.3's: newer ones call jsonrpc
+    // methods older IDEs lack, and 0.21 runs on each IDE's jsonrpc up to 1.0.
+    runtimeOnly("org.eclipse.lsp4j:org.eclipse.lsp4j.debug:0.21.0") {
+        exclude(group = "org.eclipse.lsp4j", module = "org.eclipse.lsp4j.jsonrpc")
+        exclude(group = "org.eclipse.lsp4j", module = "org.eclipse.lsp4j.generator")
+        exclude(group = "com.google.code.gson")
+    }
     testImplementation("junit:junit:4.13.2")
 }
 
