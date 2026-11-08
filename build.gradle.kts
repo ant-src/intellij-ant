@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "com.github.antsrc"
-version = "0.1.0"
+version = "0.2.0"
 
 // The oldest IDE the plugin supports, which it compiles against, and the newest the build checks it on.
 val oldestIde = "2025.3"
