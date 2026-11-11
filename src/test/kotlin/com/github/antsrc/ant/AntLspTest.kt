@@ -11,7 +11,11 @@ import com.intellij.find.usages.api.UsageSearchParameters
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.ui.TestDialogManager
+import com.intellij.openapi.ui.TestInputDialog
 import com.intellij.openapi.util.TextRange
+import com.intellij.openapi.editor.ex.util.EditorUtil
+import com.intellij.refactoring.rename.RenameHandlerRegistry
 import com.intellij.psi.search.GlobalSearchScope
 import com.github.antsrc.ant.settings.AntExecutable
 import com.github.antsrc.ant.settings.AntSettings
@@ -189,6 +193,26 @@ class AntLspTest : BasePlatformTestCase() {
         }
         val usages = inBackground { AntUsageSearcher().collectImmediateResults(parameters) }
         assertEquals("one usage, the call: $usages", listOf(TextRange(useOffset - 1, useOffset + 4)), usages.map { (it as PsiUsage).range })
+
+        // Rename asks the server for the edits: a name the server refuses stays, another replaces
+        // the declaration and its use.
+        fun renameTo(name: String) {
+            myFixture.editor.caretModel.moveToOffset(useOffset)
+            TestDialogManager.setTestInputDialog(object : TestInputDialog {
+                override fun show(message: String) = name
+            })
+            try {
+                val context = EditorUtil.getEditorDataContext(myFixture.editor)
+                val handler = RenameHandlerRegistry.getInstance().getRenameHandler(context) ?: throw AssertionError("no rename handler")
+                handler.invoke(project, myFixture.editor, myFixture.file, context)
+            } finally {
+                TestDialogManager.setTestInputDialog(TestInputDialog.DEFAULT)
+            }
+        }
+        renameTo("four")
+        assertEquals("func twice(n: int): int { n * 2 }\nvar four = twice(2)\n", myFixture.editor.document.text)
+        renameTo("thrice")
+        assertEquals("func thrice(n: int): int { n * 2 }\nvar four = thrice(2)\n", myFixture.editor.document.text)
 
         waitFor("the prelude source") { AntPrelude.getInstance(project).virtualFile != null }
         val prelude = AntPrelude.getInstance(project).virtualFile!!

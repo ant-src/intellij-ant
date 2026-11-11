@@ -25,6 +25,8 @@
         <gotoDeclarationHandler implementation="com.github.antsrc.ant.lsp.AntGotoDeclarationHandler"/>
         <psi.declarationProvider implementation="com.github.antsrc.ant.lsp.AntDeclarationProvider"/>
         <searcher forClass="com.intellij.find.usages.api.UsageSearchParameters" implementationClass="com.github.antsrc.ant.lsp.AntUsageSearcher"/>
+        <!-- Rename: the IDE's LSP client renames only in plain text and TextMate files. -->
+        <renameHandler implementation="com.github.antsrc.ant.lsp.AntRenameHandler"/>
 
         <configurationType implementation="com.github.antsrc.ant.run.AntRunConfigurationType"/>
         <runConfigurationProducer implementation="com.github.antsrc.ant.run.AntRunConfigurationProducer"/>

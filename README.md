@@ -5,11 +5,11 @@
 Support for the [Ant](https://github.com/ant-src/ant) programming language: highlighting, run
 configurations, tests with `ant test`, debugging through `ant dap`, and the language features of
 `ant lsp` through the IDE's own LSP client, including diagnostics, completion, hover, go to
-definition, references, and formatting.
+definition, references, rename, and formatting.
 <!-- plugin description end -->
 
 Needs IntelliJ IDEA 2025.3 or later (not the open-source builds or Android Studio, which lack the
-LSP client). Rename arrives with 2026.1.
+LSP client).
 
 ## Install ant
 
@@ -25,9 +25,9 @@ another one.
 ## Run
 
 Run 'file.ant' from the gutter, the editor, or the project view runs `ant run` with the file. Only a
-script, a file with a statement at its top level, has the run icon; a library has nothing to run. The
-run configuration can name a file whose contents are the program's standard input; without one, the
-program reads the console under Run and sees end of file under the debugger.
+script, a file with a statement at its top level, has the run icon; a library has nothing to run.
+The run configuration can name a file whose contents are the program's standard input; without one,
+the program reads the console under Run and sees end of file under the debugger.
 
 ## Test
 
@@ -37,12 +37,12 @@ under `ant dap`. On a subtest whose name interpolates, as the cases of a table d
 case; and each row of the table gets one of its own, which runs that case alone, when the table is a
 `var` holding an array of record literals, the subtest is right inside a `for` over it, and the name
 interpolates fields of the row whose values are literals. Run from the editor runs the test around
-the caret, or all the file's tests outside one. An Ant run configuration on a test file runs `ant
-test -json` and shows the results in the test tree, subtests under their tests; the gutter icon then
-shows how each test last went, and for a table the worst of its cases. Its Tests to run field is a
-`-run` pattern, and its program arguments are flags of `ant test`, such as `-failfast`. IDEs whose
-LSP client shows code lenses (2026.2 does, 2025.3 does not) also show the run test and debug test
-lenses of `ant lsp`, which do the same.
+the caret, or all the file's tests outside one. An Ant run configuration on a test file runs
+`ant test -json` and shows the results in the test tree, subtests under their tests; the gutter icon
+then shows how each test last went, and for a table the worst of its cases. Its Tests to run field
+is a `-run` pattern, and its program arguments are flags of `ant test`, such as `-failfast`. IDEs
+whose LSP client shows code lenses (2026.2 does, 2025.3 does not) also show the run test and debug
+test lenses of `ant lsp`, which do the same.
 
 ## Debug
 
