@@ -27,6 +27,8 @@ object AntTokenTypes {
 
     @JvmField val INT = AntTokenType("INT")
     @JvmField val FLOAT = AntTokenType("FLOAT")
+    /** A duration literal, such as 2h30m or 1.5s: a number followed by a unit. */
+    @JvmField val DURATION = AntTokenType("DURATION")
     /** A string without an interpolation, quotes included. */
     @JvmField val STRING = AntTokenType("STRING")
     /** The pieces of a string with interpolations: its opening quote, its text, and its closing quote. */

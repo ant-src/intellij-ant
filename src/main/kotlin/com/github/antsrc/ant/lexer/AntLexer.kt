@@ -10,6 +10,7 @@ import com.github.antsrc.ant.lexer.AntTokenTypes.COMMA
 import com.github.antsrc.ant.lexer.AntTokenTypes.DOT
 import com.github.antsrc.ant.lexer.AntTokenTypes.ELLIPSIS
 import com.github.antsrc.ant.lexer.AntTokenTypes.END_TAG_OPEN
+import com.github.antsrc.ant.lexer.AntTokenTypes.DURATION
 import com.github.antsrc.ant.lexer.AntTokenTypes.FLOAT
 import com.github.antsrc.ant.lexer.AntTokenTypes.IDENTIFIER
 import com.github.antsrc.ant.lexer.AntTokenTypes.INT
@@ -217,6 +218,7 @@ class AntLexer(private val testFile: Boolean = false) : LexerBase() {
 
     private fun number(): IElementType {
         var float = false
+        var exponent = false
         if (ch(pos) == '0' && ch(pos + 1) == 'x') {
             pos += 2
             while (isHex(ch(pos)) || ch(pos) == '_') pos++
@@ -235,8 +237,15 @@ class AntLexer(private val testFile: Boolean = false) : LexerBase() {
             }
             if (ch(pos) == 'e' && (isDigit(ch(pos + 1)) || (ch(pos + 1) == '+' || ch(pos + 1) == '-') && isDigit(ch(pos + 2)))) {
                 float = true
+                exponent = true
                 pos += 2
                 digits()
+            }
+            if (!exponent && isLetter(ch(pos))) {
+                // a duration literal: the whole run of letters, digits, and points before a digit
+                while (isIdentChar(ch(pos)) || ch(pos) == '.' && isDigit(ch(pos + 1))) pos++
+                setPrev(operand = true, continues = false)
+                return DURATION
             }
         }
         setPrev(operand = true, continues = false)

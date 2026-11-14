@@ -66,6 +66,15 @@ class AntLexerTest {
     }
 
     @Test
+    fun durations() {
+        assertEquals(T.DURATION, typeOf("Time.sleep(500ms)", "500ms"))
+        assertEquals(T.DURATION, typeOf("var d = 2h30m", "2h30m"))
+        assertEquals(T.DURATION, typeOf("var d = 1h30.5m", "1h30.5m"))
+        assertEquals(T.DURATION, typeOf("var d = 1_000ms", "1_000ms"))
+        assertEquals("DURATION(90m) DOT(.) IDENTIFIER(roundDuration)", shape("90m.roundDuration"))
+    }
+
+    @Test
     fun stringsAndEscapes() {
         assertEquals("STRING(\"a\\nb\")", shape("\"a\\nb\""))
         val toks = lex("var s = \"a\\nb\\qc\\u{1F600}\\u{D800}\"", escapes = true).filter { it.type != T.WHITE_SPACE }

@@ -32,6 +32,7 @@ class AntSyntaxHighlighter(private val testFile: Boolean = false) : SyntaxHighli
             T.IDENTIFIER to AntColors.IDENTIFIER,
             T.INT to AntColors.NUMBER,
             T.FLOAT to AntColors.NUMBER,
+            T.DURATION to AntColors.NUMBER,
             T.STRING to AntColors.STRING,
             T.STRING_START to AntColors.STRING,
             T.STRING_TEXT to AntColors.STRING,
