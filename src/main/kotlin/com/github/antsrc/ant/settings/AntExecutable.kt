@@ -35,7 +35,7 @@ object AntExecutable {
     }
 
     /** What to tell a user who has no `ant`. */
-    const val NOT_FOUND = "The ant executable was not found. Set its path in Settings | Languages & Frameworks | Ant, or install it with: go install github.com/ant-src/ant/cmd/ant@latest"
+    const val NOT_FOUND = "The ant executable was not found. Set its path in Settings | Languages & Frameworks | Ant, or install it with: go install ant-lang.org/cmd/ant@latest"
     private const val MISS_TTL_MS = 30_000L
 
     private fun locate(): Path? {

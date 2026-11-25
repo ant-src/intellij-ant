@@ -16,7 +16,7 @@ LSP client).
 The plugin does not bundle `ant`:
 
 ```sh
-go install github.com/ant-src/ant/cmd/ant@latest
+go install ant-lang.org/cmd/ant@latest
 ```
 
 It finds `ant` on `PATH` or in your Go bin directory. Settings | Languages & Frameworks | Ant names

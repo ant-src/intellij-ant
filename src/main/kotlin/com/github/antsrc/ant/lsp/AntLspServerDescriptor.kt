@@ -108,7 +108,7 @@ class AntLspServerDescriptor(project: Project) : ProjectWideLspServerDescriptor(
         NotificationGroupManager.getInstance().getNotificationGroup("Ant")
             .createNotification(
                 "Ant executable not found",
-                "Set its path in Settings | Languages & Frameworks | Ant, or install it with: go install github.com/ant-src/ant/cmd/ant@latest",
+                "Set its path in Settings | Languages & Frameworks | Ant, or install it with: go install ant-lang.org/cmd/ant@latest",
                 NotificationType.ERROR,
             )
             .addAction(NotificationAction.createSimpleExpiring("Open settings") {

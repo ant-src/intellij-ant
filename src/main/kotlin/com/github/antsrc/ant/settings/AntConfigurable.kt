@@ -19,7 +19,7 @@ class AntConfigurable : BoundConfigurable("Ant") {
             cell(field).align(AlignX.FILL)
                 .bindText({ settings.antPath }, { settings.antPath = it.trim() })
                 .comment("Empty means ant on PATH, then in \$GOBIN, then in the bin directory of go env GOPATH, then ~/go/bin.<br>" +
-                    "Install it with: go install github.com/ant-src/ant/cmd/ant@latest")
+                    "Install it with: go install ant-lang.org/cmd/ant@latest")
         }
     }
 
